@@ -518,11 +518,10 @@ const QQ_SEARCH_API = 'https://c.y.qq.com/soso/fcgi-bin/client_search_cp';
 const QQ_VKEY_API = 'https://u.y.qq.com/cgi-bin/musicu.fcg';
 const QQ_COVER_URL = 'https://y.qq.com/music/photo_new/T002R300x300M000';
 const QQ_GUID = String(Math.floor(Math.random() * 100000000));
-// 汽水音乐
-const QS_SEARCH_API = 'https://api.qishui.com/luna/search/track';
-const QS_CORS_PROXY = 'https://proxy.cors.sh/';
-const QS_PARSE_API = 'https://api.bugpk.com/api/qsmusic';
-const QS_COVER_BASE = 'https://p3-luna.douyinpic.com/img/';
+// 汽水音乐（使用酷我音乐JSONP接口，无需跨域代理）
+const QS_SEARCH_API = 'https://search.kuwo.cn/r.s';
+const QS_PLAY_API = 'https://antiserver.kuwo.cn/anti.s';
+const QS_COVER_BASE = 'https://imge.kugou.com/stdmusic/300/';
 
 const HOT_KEYWORDS = ['周杰伦','林俊杰','陈奕迅','邓紫棋','薛之谦','许嵩','Taylor Swift','华晨宇','李荣浩','Beyond'];
 
@@ -592,6 +591,8 @@ function jsonp(url, callbackParam, timeout=10000){
             cleanup();
             resolve(data);
         };
+        // Kuwo JSONP 响应中 catch(e){jsonError(e)} 需要此函数
+        if(!window.jsonError) window.jsonError = function(){};
         timer = setTimeout(()=>{
             cleanup();
             reject(new Error('请求超时'));
@@ -756,18 +757,9 @@ async function searchQQ(keyword){
 }
 
 async function searchQishui(keyword){
-    const searchId = crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random()*16|0; return (c==='x'?r:(r&0x3|0x8)).toString(16); });
-    const params = new URLSearchParams({
-        aid: '386088', app_name: 'luna_web', region: 'cn',
-        device_platform: 'web', channel: 'pc_web',
-        q: keyword, cursor: '0', count: '30',
-        search_id: searchId
-    });
-    const apiUrl = QS_SEARCH_API + '?' + params.toString();
-    const res = await fetch(QS_CORS_PROXY + apiUrl);
-    if(!res.ok) throw new Error('搜索服务暂时不可用（HTTP ' + res.status + '）');
-    const data = await res.json();
-    let list = data?.result_groups?.[0]?.data || [];
+    const url = `${QS_SEARCH_API}?all=${encodeURIComponent(keyword)}&ft=music&itemset=web_2013&client=kt&pn=0&rn=30&rformat=json&encoding=utf8`;
+    const data = await jsonp(url, 'callback', 15000);
+    let list = data?.abslist || [];
 
     if(list.length === 0){
         songListContainer.innerHTML = `
@@ -779,21 +771,29 @@ async function searchQishui(keyword){
         return;
     }
 
-    songs = list.map(item => {
-        const t = item.entity?.track || {};
-        const artists = (t.artists || []).map(a => ({name: a.name || '未知歌手'}));
-        const coverUri = t.album?.url_cover?.uri || '';
-        const coverBase = (t.album?.url_cover?.urls && t.album.url_cover.urls[0]) || QS_COVER_BASE;
-        const picUrl = coverUri ? coverBase + coverUri + '~c5_300x300.jpg' : '';
+    songs = list.map(s => {
+        const name = (s.SONGNAME || s.NAME || '未知').replace(/&nbsp;/g, ' ').trim();
+        const artist = (s.ARTIST || '未知歌手').replace(/&nbsp;/g, ' ').trim();
+        const album = (s.ALBUM || '--').replace(/&nbsp;/g, ' ').trim();
+        const duration = parseInt(s.DURATION || '0') * 1000;
+        const rid = s.DC_TARGETID || s.MUSICRID?.replace('MUSIC_', '') || '';
+        let picUrl = '';
+        if(s.web_albumpic_short){
+            picUrl = QS_COVER_BASE + s.web_albumpic_short.replace(/^120\//, '');
+        } else if(s.web_artistpic_short){
+            picUrl = 'https://imge.kugou.com/singer/300/' + s.web_artistpic_short.replace(/^120\//, '');
+        }
+        const isVip = (s.pay === '1' && s.limitfree !== '1') ? 1 : 0;
         return {
-            id: String(t.id),
-            name: t.name || '未知',
-            artists: artists.length ? artists : [{name: '未知歌手'}],
-            album: { name: t.album?.name || '--' },
-            duration: t.duration || 0,
+            id: rid,
+            name: name,
+            artists: [{name: artist}],
+            album: { name: album },
+            duration: duration,
             picUrl: picUrl,
-            fee: 0,
-            source: 'qishui'
+            fee: isVip,
+            source: 'qishui',
+            kuwoRid: rid
         };
     });
     renderList();
@@ -923,16 +923,28 @@ function getQQPlayUrl(song){
 }
 
 function getQishuiPlayUrl(song){
-    return new Promise((resolve, reject)=>{
-        const trackUrl = 'https://music.douyin.com/qishui/share/track?track_id=' + song.id;
-        const apiUrl = QS_PARSE_API + '?url=' + encodeURIComponent(trackUrl);
-        fetch(apiUrl).then(res => res.json()).then(data => {
-            if(data && data.code === 200 && data.data && data.data.url){
-                resolve(data.data.url);
-            } else {
-                resolve('');
-            }
-        }).catch(reject);
+    return new Promise((resolve)=>{
+        const rid = song.kuwoRid || song.id;
+        const apiUrl = QS_PLAY_API + '?format=mp3&rid=' + rid + '&type=convert_url&response=url';
+        // 多代理并行获取播放链接（响应很小，速度快）
+        const proxyUrls = [
+            'https://api.allorigins.win/raw?url=' + encodeURIComponent(apiUrl),
+            'https://proxy.cors.sh/' + apiUrl,
+            'https://corsproxy.io/?url=' + encodeURIComponent(apiUrl)
+        ];
+        Promise.any(proxyUrls.map(u => {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 12000);
+            return fetch(u, { signal: ctrl.signal })
+                .then(r => r.text())
+                .then(t => {
+                    clearTimeout(timer);
+                    const url = t.trim();
+                    if(url && url.startsWith('http')) return url;
+                    throw new Error('invalid url');
+                })
+                .catch(e => { clearTimeout(timer); throw e; });
+        })).then(url => resolve(url)).catch(() => resolve(''));
     });
 }
 
