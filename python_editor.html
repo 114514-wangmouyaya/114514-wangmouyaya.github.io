@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python 编辑器</title>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: system-ui, sans-serif;
+        }
+        body {
+            max-width: 1000px;
+            margin: 20px auto;
+            padding: 0 20px;
+            background: #f0f2f5;
+        }
+        .header {
+            background: #222;
+            color: #fff;
+            padding: 14px 20px;
+            border-radius: 8px;
+            font-size: 18px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .editor-wrapper {
+            border: 2px solid #ccc;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #fff;
+        }
+        .code-editor {
+            width: 100%;
+            min-height: 320px;
+            padding: 16px 18px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 15px;
+            border: none;
+            outline: none;
+            resize: vertical;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            line-height: 1.7;
+            tab-size: 4;
+        }
+        .editor-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 16px;
+            background: #f5f7fa;
+            border-top: 1px solid #ddd;
+        }
+        .toolbar-left {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .example-select {
+            padding: 7px 12px;
+            font-size: 13px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            background: #fff;
+            cursor: pointer;
+        }
+        .run-btn {
+            padding: 8px 24px;
+            background: #28a745;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        .run-btn:hover:not(:disabled) {
+            background: #218838;
+        }
+        .run-btn:disabled {
+            background: #aaa;
+            cursor: not-allowed;
+        }
+        .clear-btn {
+            padding: 8px 16px;
+            background: #6c757d;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .clear-btn:hover {
+            background: #5a6268;
+        }
+        .status-text {
+            font-size: 13px;
+            color: #888;
+        }
+        .output-area {
+            background: #0c0c0c;
+            color: #00ff66;
+            padding: 16px 18px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            min-height: 160px;
+            max-height: 400px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            border-top: 1px solid #333;
+        }
+        .output-area .error {
+            color: #ff6b6b;
+        }
+        .output-label {
+            background: #1a1a1a;
+            color: #888;
+            padding: 6px 18px;
+            font-size: 12px;
+            border-top: 1px solid #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <span>Python 编辑器</span>
+        <span style="font-size:14px;color:#aaa;" id="pyVersion"></span>
+    </div>
+
+    <div class="editor-wrapper">
+        <textarea class="code-editor" id="codeEditor" spellcheck="false"></textarea>
+        <div class="editor-toolbar">
+            <div class="toolbar-left">
+                <select class="example-select" id="exampleSelect">
+                    <option value="">— 选择示例代码 —</option>
+                    <option value="hello">Hello World</option>
+                    <option value="calc">计算与循环</option>
+                    <option value="fibonacci">斐波那契函数</option>
+                    <option value="class">类与对象</option>
+                </select>
+                <span class="status-text" id="pyStatus">正在加载 Python 运行环境，请稍候...</span>
+            </div>
+            <div>
+                <button class="clear-btn" id="clearBtn">清空输出</button>
+                <button class="run-btn" id="runBtn" disabled>▶ 运行 (Ctrl+Enter)</button>
+            </div>
+        </div>
+        <div class="output-label">输出</div>
+        <div class="output-area" id="outputArea">输出将显示在这里...</div>
+    </div>
+
+<script>
+const codeEditor = document.getElementById('codeEditor');
+const runBtn = document.getElementById('runBtn');
+const clearBtn = document.getElementById('clearBtn');
+const outputArea = document.getElementById('outputArea');
+const pyStatus = document.getElementById('pyStatus');
+const pyVersion = document.getElementById('pyVersion');
+const exampleSelect = document.getElementById('exampleSelect');
+
+let pyodide = null;
+let isRunning = false;
+
+// 示例代码
+const examples = {
+    hello: `# Hello World
+print("Hello, Python!")
+print("欢迎使用浏览器中的 Python！")
+`,
+    calc: `# 计算与循环
+total = 0
+for i in range(1, 101):
+    total += i
+print(f"1 到 100 的和是: {total}")
+
+squares = [x**2 for x in range(1, 11)]
+print(f"1-10 的平方数: {squares}")
+`,
+    fibonacci: `# 斐波那契数列
+def fibonacci(n):
+    a, b = 0, 1
+    result = []
+    for _ in range(n):
+        result.append(a)
+        a, b = b, a + b
+    return result
+
+print(f"斐波那契数列: {fibonacci(15)}")
+`,
+    class: `# 类与对象
+class Animal:
+    def __init__(self, name, sound):
+        self.name = name
+        self.sound = sound
+
+    def speak(self):
+        return f"{self.name} 说: {self.sound}!"
+
+animals = [
+    Animal("小狗", "汪汪"),
+    Animal("小猫", "喵喵"),
+    Animal("小牛", "哞哞"),
+]
+
+for animal in animals:
+    print(animal.speak())
+`
+};
+
+// 默认代码
+codeEditor.value = examples.hello;
+
+// 示例选择
+exampleSelect.addEventListener('change', function(){
+    if(this.value && examples[this.value]){
+        codeEditor.value = examples[this.value];
+        this.value = '';
+    }
+});
+
+// Tab 键插入4个空格
+codeEditor.addEventListener('keydown', function(e){
+    if(e.key === 'Tab'){
+        e.preventDefault();
+        const start = this.selectionStart;
+        const end = this.selectionEnd;
+        this.value = this.value.substring(0, start) + '    ' + this.value.substring(end);
+        this.selectionStart = this.selectionEnd = start + 4;
+    }
+    if(e.ctrlKey && e.key === 'Enter'){
+        e.preventDefault();
+        if(!runBtn.disabled && !isRunning){
+            runCode();
+        }
+    }
+});
+
+// 加载 Pyodide
+async function initPyodide(){
+    try{
+        pyodide = await loadPyodide({
+            indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/"
+        });
+        const version = pyodide.runPython("import sys; sys.version.split()[0]");
+        pyVersion.textContent = 'Python ' + version;
+        pyStatus.textContent = '✓ 环境已就绪';
+        pyStatus.style.color = '#28a745';
+        runBtn.disabled = false;
+    }catch(e){
+        pyStatus.textContent = '✗ 环境加载失败（需联网）';
+        pyStatus.style.color = '#dc3545';
+        outputArea.innerHTML = '<span class="error">加载失败: ' + e.message + '</span>';
+    }
+}
+
+// 运行 Python 代码
+async function runCode(){
+    if(!pyodide || isRunning) return;
+    const code = codeEditor.value;
+    if(!code.trim()){
+        outputArea.textContent = '(代码为空)';
+        return;
+    }
+
+    isRunning = true;
+    runBtn.disabled = true;
+    runBtn.textContent = '⏳ 运行中...';
+    pyStatus.textContent = '正在执行...';
+    outputArea.textContent = '';
+
+    let output = '';
+    let hasError = false;
+
+    pyodide.setStdout({
+        batched: (s) => { output += s + '\n'; }
+    });
+    pyodide.setStderr({
+        batched: (s) => { output += s + '\n'; hasError = true; }
+    });
+
+    try{
+        await pyodide.runPythonAsync(code);
+    }catch(e){
+        hasError = true;
+        output += e.toString();
+    }
+
+    if(hasError){
+        outputArea.innerHTML = '';
+        const span = document.createElement('span');
+        span.className = 'error';
+        span.textContent = output || '(发生错误)';
+        outputArea.appendChild(span);
+    }else{
+        outputArea.textContent = output || '(无输出)';
+    }
+    outputArea.scrollTop = outputArea.scrollHeight;
+
+    isRunning = false;
+    runBtn.disabled = false;
+    runBtn.textContent = '▶ 运行 (Ctrl+Enter)';
+    pyStatus.textContent = '✓ 环境已就绪';
+}
+
+runBtn.addEventListener('click', runCode);
+
+clearBtn.addEventListener('click', function(){
+    outputArea.textContent = '输出已清空。';
+});
+
+initPyodide();
+</script>
+</body>
+</html>
