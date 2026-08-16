@@ -238,6 +238,7 @@
         }
         .source-badge.qq { background: rgba(49,140,255,0.2); color: #318cff; }
         .source-badge.netease { background: rgba(239,68,68,0.2); color: #ef4444; }
+        .source-badge.qishui { background: rgba(0,212,170,0.2); color: #00d4aa; }
 
         /* 播放中动画 */
         .playing-icon {
@@ -449,6 +450,7 @@
         <div class="source-switch">
             <button class="source-btn active" data-source="netease" id="srcNetease">网易云音乐</button>
             <button class="source-btn" data-source="qq" id="srcQq">QQ音乐</button>
+            <button class="source-btn" data-source="qishui" id="srcQishui">汽水音乐</button>
         </div>
         <div class="search-box">
             <span class="search-icon">🔍</span>
@@ -516,6 +518,11 @@ const QQ_SEARCH_API = 'https://c.y.qq.com/soso/fcgi-bin/client_search_cp';
 const QQ_VKEY_API = 'https://u.y.qq.com/cgi-bin/musicu.fcg';
 const QQ_COVER_URL = 'https://y.qq.com/music/photo_new/T002R300x300M000';
 const QQ_GUID = String(Math.floor(Math.random() * 100000000));
+// 汽水音乐
+const QS_SEARCH_API = 'https://api.qishui.com/luna/search/track';
+const QS_CORS_PROXY = 'https://proxy.cors.sh/';
+const QS_PARSE_API = 'https://api.bugpk.com/api/qsmusic';
+const QS_COVER_BASE = 'https://p3-luna.douyinpic.com/img/';
 
 const HOT_KEYWORDS = ['周杰伦','林俊杰','陈奕迅','邓紫棋','薛之谦','许嵩','Taylor Swift','华晨宇','李荣浩','Beyond'];
 
@@ -523,7 +530,7 @@ const HOT_KEYWORDS = ['周杰伦','林俊杰','陈奕迅','邓紫棋','薛之谦
 let songs = [];
 let currentIndex = -1;
 let playMode = 0; // 0=顺序 1=随机 2=单曲循环
-let currentSource = 'netease'; // 'netease' or 'qq'
+let currentSource = 'netease'; // 'netease' | 'qq' | 'qishui'
 const audio = document.getElementById('audio');
 audio.volume = 0.7;
 
@@ -549,6 +556,7 @@ const volumeFill = document.getElementById('volumeFill');
 const toastEl = document.getElementById('toast');
 const srcNetease = document.getElementById('srcNetease');
 const srcQq = document.getElementById('srcQq');
+const srcQishui = document.getElementById('srcQishui');
 
 // ============ 工具 ============
 function showToast(msg, duration=2500){
@@ -616,20 +624,24 @@ function switchSource(src){
     currentSource = src;
     srcNetease.classList.toggle('active', src === 'netease');
     srcQq.classList.toggle('active', src === 'qq');
+    srcQishui.classList.toggle('active', src === 'qishui');
     songs = [];
     currentIndex = -1;
     audio.pause();
     audio.removeAttribute('src');
-    searchInput.placeholder = src === 'qq' ? '搜索QQ音乐歌曲、歌手...' : '搜索歌曲、歌手...';
+    const srcNames = { qq: 'QQ音乐', netease: '网易云音乐', qishui: '汽水音乐' };
+    const placeholders = { qq: '搜索QQ音乐歌曲、歌手...', netease: '搜索歌曲、歌手...', qishui: '搜索汽水音乐/抖音热歌...' };
+    searchInput.placeholder = placeholders[src] || '搜索歌曲、歌手...';
     songListContainer.innerHTML = `
         <div class="empty-state">
             <div class="icon">🎶</div>
-            <h3>已切换到${src === 'qq' ? 'QQ音乐' : '网易云音乐'}</h3>
+            <h3>已切换到${srcNames[src] || src}</h3>
             <p>输入歌曲名或歌手名开始搜索</p>
         </div>`;
 }
 srcNetease.addEventListener('click', ()=> switchSource('netease'));
 srcQq.addEventListener('click', ()=> switchSource('qq'));
+srcQishui.addEventListener('click', ()=> switchSource('qishui'));
 
 // ============ 搜索 ============
 async function doSearch(){
@@ -639,12 +651,14 @@ async function doSearch(){
     songListContainer.innerHTML = `
         <div class="loading-state">
             <div class="spinner"></div>
-            <p>正在${currentSource === 'qq' ? 'QQ音乐' : '网易云音乐'}搜索"${escapeHtml(keyword)}"...</p>
+            <p>正在${currentSource === 'qq' ? 'QQ音乐' : currentSource === 'qishui' ? '汽水音乐' : '网易云音乐'}搜索"${escapeHtml(keyword)}"...</p>
         </div>`;
 
     try{
         if(currentSource === 'qq'){
             await searchQQ(keyword);
+        } else if(currentSource === 'qishui'){
+            await searchQishui(keyword);
         } else {
             await searchNetease(keyword);
         }
@@ -741,6 +755,50 @@ async function searchQQ(keyword){
     renderList();
 }
 
+async function searchQishui(keyword){
+    const searchId = crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random()*16|0; return (c==='x'?r:(r&0x3|0x8)).toString(16); });
+    const params = new URLSearchParams({
+        aid: '386088', app_name: 'luna_web', region: 'cn',
+        device_platform: 'web', channel: 'pc_web',
+        q: keyword, cursor: '0', count: '30',
+        search_id: searchId
+    });
+    const apiUrl = QS_SEARCH_API + '?' + params.toString();
+    const res = await fetch(QS_CORS_PROXY + apiUrl);
+    if(!res.ok) throw new Error('搜索服务暂时不可用（HTTP ' + res.status + '）');
+    const data = await res.json();
+    let list = data?.result_groups?.[0]?.data || [];
+
+    if(list.length === 0){
+        songListContainer.innerHTML = `
+            <div class="empty-state">
+                <div class="icon">🔍</div>
+                <h3>没有找到相关歌曲</h3>
+                <p>试试其他关键词吧</p>
+            </div>`;
+        return;
+    }
+
+    songs = list.map(item => {
+        const t = item.entity?.track || {};
+        const artists = (t.artists || []).map(a => ({name: a.name || '未知歌手'}));
+        const coverUri = t.album?.url_cover?.uri || '';
+        const coverBase = (t.album?.url_cover?.urls && t.album.url_cover.urls[0]) || QS_COVER_BASE;
+        const picUrl = coverUri ? coverBase + coverUri + '~c5_300x300.jpg' : '';
+        return {
+            id: String(t.id),
+            name: t.name || '未知',
+            artists: artists.length ? artists : [{name: '未知歌手'}],
+            album: { name: t.album?.name || '--' },
+            duration: t.duration || 0,
+            picUrl: picUrl,
+            fee: 0,
+            source: 'qishui'
+        };
+    });
+    renderList();
+}
+
 // ============ 渲染列表 ============
 function renderList(){
     let html = `<div class="list-header">
@@ -752,7 +810,9 @@ function renderList(){
         const album = song.album.name || '--';
         const isPlaying = i === currentIndex;
         const isVip = song.fee === 1;
-        const srcLabel = song.source === 'qq' ? '<span class="source-badge qq">QQ</span>' : '<span class="source-badge netease">云</span>';
+        const srcLabel = song.source === 'qq' ? '<span class="source-badge qq">QQ</span>'
+            : song.source === 'qishui' ? '<span class="source-badge qishui">汽水</span>'
+            : '<span class="source-badge netease">云</span>';
         const cover = song.picUrl
             ? `<img class="song-cover" src="${song.picUrl}" loading="lazy" onerror="this.style.visibility='hidden'">`
             : `<div class="song-cover" style="display:flex;align-items:center;justify-content:center;font-size:18px;">🎵</div>`;
@@ -797,6 +857,8 @@ async function playSong(idx){
         let playUrl = '';
         if(song.source === 'qq'){
             playUrl = await getQQPlayUrl(song);
+        } else if(song.source === 'qishui'){
+            playUrl = await getQishuiPlayUrl(song);
         } else {
             playUrl = WY_SONG_URL + song.id + '.mp3';
         }
@@ -855,6 +917,20 @@ function getQQPlayUrl(song){
                 }
             }catch(e){
                 reject(e);
+            }
+        }).catch(reject);
+    });
+}
+
+function getQishuiPlayUrl(song){
+    return new Promise((resolve, reject)=>{
+        const trackUrl = 'https://music.douyin.com/qishui/share/track?track_id=' + song.id;
+        const apiUrl = QS_PARSE_API + '?url=' + encodeURIComponent(trackUrl);
+        fetch(apiUrl).then(res => res.json()).then(data => {
+            if(data && data.code === 200 && data.data && data.data.url){
+                resolve(data.data.url);
+            } else {
+                resolve('');
             }
         }).catch(reject);
     });
