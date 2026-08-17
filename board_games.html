@@ -25,15 +25,6 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:linear-gradi
 .status{padding:8px 16px;border-radius:8px;background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.2);font-size:14px;color:#c4b5fd;}
 .board-wrap{display:flex;gap:20px;flex-wrap:wrap;justify-content:center;}
 canvas{border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.5);cursor:pointer;}
-.side-panel{width:220px;display:flex;flex-direction:column;gap:12px;}
-.panel-card{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px;}
-.panel-card h3{font-size:13px;color:#a78bfa;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;}
-.panel-card p,.panel-card li{font-size:13px;color:#aaa;line-height:1.6;}
-.panel-card ul{list-style:none;padding:0;}
-.panel-card li{padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);}
-.learn-bar{height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;margin-top:4px;}
-.learn-fill{height:100%;background:linear-gradient(90deg,#a78bfa,#ec4899);border-radius:3px;transition:width .5s;}
-.prediction-box{margin-top:16px;padding:12px;border-radius:10px;background:rgba(251,191,36,0.08);border:1px dashed rgba(251,191,36,0.3);font-size:13px;color:#fbbf24;text-align:center;min-height:40px;display:flex;align-items:center;justify-content:center;}
 .toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(16,185,129,0.9);color:#fff;padding:10px 24px;border-radius:10px;font-size:14px;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none;}
 .toast.show{opacity:1;}
 </style>
@@ -57,26 +48,7 @@ canvas{border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.5);cursor:pointer;}
     </div>
     <div class="board-wrap">
         <canvas id="board" width="600" height="600"></canvas>
-        <div class="side-panel">
-            <div class="panel-card">
-                <h3>AI 学习进度</h3>
-                <ul id="learnList">
-                    <li>对局数: <span id="gameCount">0</span></li>
-                    <li>玩家偏好方向: <span id="prefDir">--</span></li>
-                    <li>AI 适应度: <div class="learn-bar"><div class="learn-fill" id="adaptBar" style="width:10%"></div></div></li>
-                </ul>
-            </div>
-            <div class="panel-card">
-                <h3>AI 预判</h3>
-                <p id="predictText">开始对弈后，AI将预判你的下一步</p>
-            </div>
-            <div class="panel-card">
-                <h3>规则提示</h3>
-                <p id="ruleHint">五子棋：黑棋先行，率先连成五子者胜</p>
-            </div>
-        </div>
     </div>
-    <div class="prediction-box" id="predBox">AI 预判区域 — 对弈开始后显示</div>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -89,18 +61,11 @@ let gameRunning = false;
 let playerColor = 'black'; // 玩家执黑
 let aiColor = 'white';
 let history = [];
-let prediction = null;
 let learnData = { games: 0, moves: [], prefDir: null, adapt: 10, playerStyle: {} };
 
 // 学习数据持久化
 try{ const saved = localStorage.getItem('boardAI_learn'); if(saved) learnData = JSON.parse(saved); }catch(e){}
 function saveLearn(){ try{ localStorage.setItem('boardAI_learn', JSON.stringify(learnData)); }catch(e){} }
-function updateLearnUI(){
-    document.getElementById('gameCount').textContent = learnData.games;
-    document.getElementById('prefDir').textContent = learnData.prefDir || '--';
-    document.getElementById('adaptBar').style.width = Math.min(100, learnData.adapt) + '%';
-}
-updateLearnUI();
 
 function showToast(msg){
     const t = document.getElementById('toast');
@@ -109,19 +74,12 @@ function showToast(msg){
 }
 
 // ============ Tab切换 ============
-const rules = {
-    gomoku: '五子棋：黑棋先行，横/竖/斜率先连成五子者胜',
-    go: '围棋(9路)：黑棋先行，围地多者胜，无气棋子被提',
-    cchess: '中国象棋：红先黑后，将死对方将帅者胜',
-    ichess: '国际象棋：白先黑后，将死对方国王者胜'
-};
 document.querySelectorAll('.tab-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
         if(gameRunning){ showToast('请先结束当前对局'); return; }
         document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
         btn.classList.add('active');
         currentGame = btn.dataset.game;
-        document.getElementById('ruleHint').textContent = rules[currentGame];
         drawBoard();
     });
 });
@@ -144,11 +102,8 @@ document.getElementById('undoBtn').addEventListener('click', ()=>{
 function startGame(){
     gameRunning = true;
     history = [];
-    prediction = null;
     document.getElementById('startBtn').textContent = '结束对局';
     document.getElementById('status').textContent = '你的回合（黑棋）';
-    document.getElementById('predictText').textContent = '等待你的第一步...';
-    document.getElementById('predBox').textContent = 'AI 正在观察你的走法...';
     games[currentGame].init();
     drawBoard();
 }
@@ -157,7 +112,7 @@ function endGame(winner){
     gameRunning = false;
     learnData.games++;
     learnData.adapt = Math.min(100, learnData.adapt + 3);
-    saveLearn(); updateLearnUI();
+    saveLearn();
     document.getElementById('startBtn').textContent = '开始对弈';
     const msg = winner === 'player' ? '🎉 你赢了！' : winner === 'ai' ? '🤖 AI赢了！' : '平局';
     document.getElementById('status').textContent = msg;
@@ -169,7 +124,7 @@ function recordPlayerMove(move){
     if(learnData.moves.length > 50) learnData.moves.shift();
     // 分析偏好
     if(currentGame === 'gomoku' && move.dir) learnData.prefDir = move.dir;
-    saveLearn(); updateLearnUI();
+    saveLearn();
 }
 
 // ============ Canvas绘制工具 ============
@@ -223,14 +178,6 @@ const GOMOKU = {
                 ctx.strokeStyle='#ef4444'; ctx.lineWidth=2;
                 ctx.beginPath(); ctx.arc(this.pad+last.x*this.cell,this.pad+last.y*this.cell,this.cell/2-4,0,Math.PI*2); ctx.stroke();
             }
-        }
-        // 预判标记
-        if(prediction && prediction.game==='gomoku'){
-            ctx.strokeStyle='rgba(251,191,36,0.7)'; ctx.lineWidth=2; ctx.setLineDash([5,5]);
-            ctx.beginPath(); ctx.arc(this.pad+prediction.x*this.cell,this.pad+prediction.y*this.cell,this.cell/2-2,0,Math.PI*2); ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.fillStyle='rgba(251,191,36,0.9)'; ctx.font='12px sans-serif'; ctx.textAlign='center';
-            ctx.fillText('预判', this.pad+prediction.x*this.cell, this.pad+prediction.y*this.cell-this.cell/2+2);
         }
     },
     drawStone(x,y,color){
@@ -302,11 +249,6 @@ const GOMOKU = {
     placeAI(x,y){
         this.board[y][x]=2;
         history.push({game:'gomoku',x,y,color:2});
-        // 预判玩家下一步
-        prediction = this.predictPlayer(x,y);
-        prediction.game='gomoku';
-        document.getElementById('predictText').textContent=`预判你会下 (${prediction.x+1},${prediction.y+1})`;
-        document.getElementById('predBox').textContent=`🤖 AI下在(${x+1},${y+1})，预判你将下在(${prediction.x+1},${prediction.y+1})`;
         drawBoard();
         if(this.checkWin(x,y,2)){endGame('ai');return;}
         document.getElementById('status').textContent='你的回合（黑棋）';
@@ -395,10 +337,6 @@ const GO = {
                 ctx.beginPath();ctx.arc(this.pad+last.x*this.cell,this.pad+last.y*this.cell,this.cell/2-4,0,Math.PI*2);ctx.stroke();
             }
         }
-        if(prediction&&prediction.game==='go'){
-            ctx.strokeStyle='rgba(251,191,36,0.7)';ctx.lineWidth=2;ctx.setLineDash([5,5]);
-            ctx.beginPath();ctx.arc(this.pad+prediction.x*this.cell,this.pad+prediction.y*this.cell,this.cell/2-2,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
-        }
         ctx.fillStyle='#aaa';ctx.font='13px sans-serif';ctx.textAlign='left';
         ctx.fillText(`提子 — 黑:${this.caps[0]}  白:${this.caps[1]}`,this.pad,canvas.height-12);
     },
@@ -480,9 +418,6 @@ const GO = {
         this.ko=cap.length===1?[cap[0][0],cap[0][1]]:null;
         this.passCount=0;
         history.push({game:'go',x:bx,y:by,color:2,caps:cap.length});
-        prediction=this.predictPlayer(bx,by);prediction.game='go';
-        document.getElementById('predictText').textContent=`预判你会下(${prediction.x+1},${prediction.y+1})`;
-        document.getElementById('predBox').textContent=`🤖 AI下在(${bx+1},${by+1})，预判你将下在(${prediction.x+1},${prediction.y+1})`;
         drawBoard();
         document.getElementById('status').textContent='你的回合（黑棋）';
     },
@@ -584,11 +519,6 @@ const CCHESS = {
             const[r,c]=this.selected;
             ctx.strokeStyle='#fbbf24';ctx.lineWidth=3;
             ctx.beginPath();ctx.arc(this.padX+c*this.cell,this.padY+r*this.cell,this.cell/2-2,0,Math.PI*2);ctx.stroke();
-        }
-        // 预判
-        if(prediction&&prediction.game==='cchess'){
-            ctx.strokeStyle='rgba(251,191,36,0.7)';ctx.lineWidth=2;ctx.setLineDash([5,5]);
-            ctx.beginPath();ctx.arc(this.padX+prediction.c*this.cell,this.padY+prediction.r*this.cell,this.cell/2-2,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
         }
     },
     drawPiece(r,c,p){
@@ -731,9 +661,6 @@ const CCHESS = {
         const[fr,fc,tr,tc]=bestMove;
         this.makeMove(fr,fc,tr,tc);
         recordPlayerMove({fr,fc,tr,tc});
-        prediction=this.predictPlayer();prediction.game='cchess';
-        document.getElementById('predictText').textContent=`预判你会走 ${this.moveName(prediction.fr,prediction.fc,prediction.tr,prediction.tc)}`;
-        document.getElementById('predBox').textContent=`🤖 AI走了 ${this.moveName(fr,fc,tr,tc)}，预判你将走 ${this.moveName(prediction.fr,prediction.fc,prediction.tr,prediction.tc)}`;
         if(this.isCheckmate('red')){endGame('ai');return;}
         document.getElementById('status').textContent='你的回合（红棋）';
     },
@@ -800,10 +727,6 @@ const ICHESS = {
             const[r,c]=this.selected;
             ctx.strokeStyle='#fbbf24';ctx.lineWidth=3;
             ctx.strokeRect(this.pad+c*this.cell+2,this.pad+r*this.cell+2,this.cell-4,this.cell-4);
-        }
-        if(prediction&&prediction.game==='ichess'){
-            ctx.strokeStyle='rgba(251,191,36,0.7)';ctx.lineWidth=2;ctx.setLineDash([5,5]);
-            ctx.strokeRect(this.pad+prediction.c*this.cell+2,this.pad+prediction.r*this.cell+2,this.cell-4,this.cell-4);ctx.setLineDash([]);
         }
     },
     drawPiece(r,c,p){
@@ -925,10 +848,6 @@ const ICHESS = {
         const[fr,fc,tr,tc]=bm;
         this.makeMove(fr,fc,tr,tc);
         recordPlayerMove({fr,fc,tr,tc});
-        prediction=this.predictPlayer();prediction.game='ichess';
-        const names={p:'兵',n:'马',b:'象',r:'车',q:'后',k:'王'};
-        document.getElementById('predictText').textContent=`预判你会走 ${names[this.board[prediction.tr]?.[prediction.tc]?.type||'p']}`;
-        document.getElementById('predBox').textContent=`🤖 AI走了${names[this.board[tr][tc].type]}，预判你的应对`;
         if(this.isCheckmate('white')){endGame('ai');return;}
         document.getElementById('status').textContent='你的回合（白棋）';
     },
@@ -979,9 +898,6 @@ function undoMove(){
         ICHESS.board[last.fr][last.fc]=ICHESS.board[last.tr][last.tc];
         ICHESS.board[last.tr][last.tc]=last.captured;
     }
-    prediction=null;
-    document.getElementById('predictText').textContent='等待你的下一步...';
-    document.getElementById('predBox').textContent='已悔棋，请继续';
     document.getElementById('status').textContent='你的回合';
     drawBoard();
 }
