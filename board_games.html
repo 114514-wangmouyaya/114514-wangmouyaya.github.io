@@ -297,9 +297,9 @@ const GOMOKU = {
     }
 };
 
-// ============ 围棋(9路) ============
+// ============ 围棋(13路) ============
 const GO = {
-    size:9, cell:55, pad:35,
+    size:13, cell:44, pad:35,
     board: [], // 0空 1黑 2白
     caps:[0,0], // 提子数
     ko:null,
@@ -318,7 +318,7 @@ const GO = {
             ctx.beginPath();ctx.moveTo(this.pad+i*this.cell,this.pad);ctx.lineTo(this.pad+i*this.cell,this.pad+(this.size-1)*this.cell);ctx.stroke();
         }
         // 星位
-        [[2,2],[2,6],[4,4],[6,2],[6,6]].forEach(([x,y])=>{
+        [[3,3],[3,9],[6,6],[9,3],[9,9]].forEach(([x,y])=>{
             ctx.fillStyle='rgba(167,139,250,0.5)';ctx.beginPath();ctx.arc(this.pad+x*this.cell,this.pad+y*this.cell,3.5,0,Math.PI*2);ctx.fill();
         });
         for(let y=0;y<this.size;y++) for(let x=0;x<this.size;x++){
