@@ -1615,6 +1615,31 @@ main { padding-top: 26px; }
       </div>
 
       <div class="card form-card">
+        <h2>语音设置</h2>
+        <p class="muted">华为/安卓平板无声，通常是系统没有装中文语音引擎。先点「测试朗读」，不行就在下方切换到「AI 语音播报」（需要 API Key，OpenAI 兼容的 TTS 接口）。</p>
+        <div class="form-row">
+          <label class="field"><span>语音方式</span>
+            <select id="setSpeechEngine">
+              <option value="system">系统语音</option>
+              <option value="ai">AI 语音播报</option>
+            </select>
+          </label>
+          <label class="field"><span>系统语音选择</span>
+            <select id="setVoiceName"></select>
+          </label>
+        </div>
+        <div class="form-row">
+          <label class="field block"><span>AI 语音接口地址（OpenAI 兼容 TTS）</span>
+            <input type="text" id="setTtsUrl" placeholder="https://api.openai.com/v1/audio/speech">
+          </label>
+        </div>
+        <div class="form-actions">
+          <button id="testVoice" class="btn">测试朗读</button>
+          <span id="voiceStatus" class="muted"></span>
+        </div>
+      </div>
+
+      <div class="card form-card">
         <h2>数据管理</h2>
         <p class="muted">数据保存在本机浏览器中，换电脑或重装前请先导出备份。</p>
         <div class="form-actions">
@@ -2010,9 +2035,12 @@ main { padding-top: 26px; }
       questions: [],
       lastAiSession: null,
       settings: { remindOn: false, remindTime: "19:30", lastRemind: "" },
+      speech: { engine: "system", voiceName: "" },
       ai: { apiKey: "", model: "gpt-4.1-mini",
             baseUrl: "https://api.openai.com/v1/responses",
-            apiType: "openai", extraParams: "" }
+            apiType: "openai", extraParams: "",
+            ttsUrl: "https://api.openai.com/v1/audio/speech",
+            ttsModel: "gpt-4o-mini-tts", ttsVoice: "nova" }
     };
   }
 
@@ -2043,6 +2071,9 @@ main { padding-top: 26px; }
     s.daily = s.daily && typeof s.daily === "object" ? s.daily : {};
     s.mistakes = Array.isArray(s.mistakes) ? s.mistakes : [];
     s.settings = s.settings && typeof s.settings === "object" ? s.settings : {};
+    s.speech = s.speech && typeof s.speech === "object" ? s.speech : {};
+    if (s.speech.engine !== "ai") s.speech.engine = "system";
+    if (typeof s.speech.voiceName !== "string") s.speech.voiceName = "";
     s.practiceLog = Array.isArray(s.practiceLog) ? s.practiceLog : [];
     s.questions = Array.isArray(s.questions) ? s.questions : [];
     s.lastAiSession = s.lastAiSession && typeof s.lastAiSession === "object"
@@ -2055,6 +2086,11 @@ main { padding-top: 26px; }
     }
     if (s.ai.apiType !== "chat") s.ai.apiType = "openai";
     if (typeof s.ai.extraParams !== "string") s.ai.extraParams = "";
+    if (typeof s.ai.ttsUrl !== "string" || !s.ai.ttsUrl) {
+      s.ai.ttsUrl = "https://api.openai.com/v1/audio/speech";
+    }
+    if (typeof s.ai.ttsModel !== "string" || !s.ai.ttsModel) s.ai.ttsModel = "gpt-4o-mini-tts";
+    if (typeof s.ai.ttsVoice !== "string" || !s.ai.ttsVoice) s.ai.ttsVoice = "nova";
     if (typeof s.settings.remindTime !== "string") s.settings.remindTime = "19:30";
     if (typeof s.settings.lastRemind !== "string") s.settings.lastRemind = "";
     s.subjects.forEach(function (sub) {
@@ -2632,6 +2668,21 @@ main { padding-top: 26px; }
     $("#setBaseUrl").value = state.ai.baseUrl || "https://api.openai.com/v1/responses";
     $("#setApiType").value = state.ai.apiType === "chat" ? "chat" : "openai";
     $("#setExtraParams").value = state.ai.extraParams || "";
+    $("#setSpeechEngine").value = state.speech.engine === "ai" ? "ai" : "system";
+    $("#setTtsUrl").value = state.ai.ttsUrl || "https://api.openai.com/v1/audio/speech";
+    var vsel = $("#setVoiceName");
+    var curVoice = state.speech.voiceName || "";
+    vsel.innerHTML = '<option value="">（自动选择中文语音）</option>';
+    sysVoices.forEach(function (v) {
+      var o = document.createElement("option");
+      o.value = v.name;
+      o.textContent = v.name + "（" + (v.lang || "") + "）";
+      if (v.name === curVoice) o.selected = true;
+      vsel.appendChild(o);
+    });
+    $("#voiceStatus").textContent = sysVoices.length ?
+      "已检测到 " + sysVoices.length + " 个系统语音" :
+      "未检测到系统语音，建议切换到 AI 语音播报";
     var box = $("#subjectManage");
     box.innerHTML = "";
     state.subjects.forEach(function (s) {
@@ -3123,6 +3174,7 @@ main { padding-top: 26px; }
   /* ================= 解惑 · 答疑课堂 ================= */
   var lessonState = { qid: null, chunks: [], page: 0 };
   var pendingQPhoto = null;
+  var sysVoices = [];
 
   function renderQuestions() {
     var sel = $("#qSubject");
@@ -3323,25 +3375,107 @@ main { padding-top: 26px; }
     if ("speechSynthesis" in window) {
       try { window.speechSynthesis.cancel(); } catch (e) { /* ignore */ }
     }
+    if (state._ttsAudio) {
+      try { state._ttsAudio.pause(); } catch (e) { /* ignore */ }
+    }
   }
 
-  function speakText(text) {
-    if (!("speechSynthesis" in window)) {
-      toast("当前浏览器不支持语音朗读");
+  function refreshVoices() {
+    if (!("speechSynthesis" in window)) return;
+    try { sysVoices = window.speechSynthesis.getVoices() || []; } catch (e) { sysVoices = []; }
+  }
+
+  function bestZhVoice() {
+    var prefer = state.speech.voiceName;
+    if (prefer) {
+      for (var i = 0; i < sysVoices.length; i++) {
+        if (sysVoices[i].name === prefer) return sysVoices[i];
+      }
+    }
+    for (var j = 0; j < sysVoices.length; j++) {
+      var v = sysVoices[j];
+      var lang = (v.lang || "").toLowerCase();
+      if (lang.indexOf("zh") === 0) return v;
+    }
+    return null;
+  }
+
+  function aiTtsConfigured() {
+    return !!(state.ai && state.ai.apiKey && state.ai.ttsUrl);
+  }
+
+  function aiTts(text) {
+    if (!aiTtsConfigured()) {
+      toast("AI 语音需要 API Key，请在设置里填写并开启");
       return;
     }
     stopSpeak();
+    var body = {
+      model: state.ai.ttsModel || "gpt-4o-mini-tts",
+      input: String(text || "").slice(0, 4000),
+      voice: state.ai.ttsVoice || "nova",
+      response_format: "mp3"
+    };
+    toast("正在生成语音…");
+    fetch(state.ai.ttsUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + state.ai.apiKey
+      },
+      body: JSON.stringify(body)
+    }).then(function (resp) {
+      if (!resp.ok) {
+        return resp.json().then(function (j) {
+          throw new Error((j && j.error && j.error.message) || ("HTTP " + resp.status));
+        });
+      }
+      return resp.blob();
+    }).then(function (blob) {
+      var url = URL.createObjectURL(blob);
+      var audio = new Audio(url);
+      state._ttsAudio = audio;
+      audio.play().then(function () {
+        toast("正在播放 AI 语音…", true);
+      }).catch(function () {
+        toast("播放失败，请检查音量或网络");
+      });
+    }).catch(function (err) {
+      toast("AI 语音失败：" + err.message);
+    });
+  }
+
+  function speakText(text) {
+    if (state.speech.engine === "ai") {
+      aiTts(text);
+      return;
+    }
+    if (!("speechSynthesis" in window)) {
+      if (aiTtsConfigured()) {
+        toast("系统语音不可用，正在改用 AI 语音…");
+        aiTts(text);
+      } else {
+        toast("当前浏览器不支持语音朗读，请开启系统中文语音或配置 AI 语音");
+      }
+      return;
+    }
+    stopSpeak();
+    refreshVoices();
+    if (!sysVoices.length) {
+      toast("没有检测到系统语音，已尝试朗读；无声请到「设置→语音设置」处理");
+    }
     var u = new SpeechSynthesisUtterance(text);
     u.lang = "zh-CN";
     u.rate = parseFloat($("#lessonRate").value) || 1;
-    var voices = window.speechSynthesis.getVoices();
-    for (var i = 0; i < voices.length; i++) {
-      if (voices[i].lang && voices[i].lang.toLowerCase().indexOf("zh") === 0) {
-        u.voice = voices[i];
-        break;
-      }
+    var v = bestZhVoice();
+    if (v) {
+      u.voice = v;
+    } else if (aiTtsConfigured()) {
+      toast("系统没有中文语音，改用 AI 语音播报…");
+      aiTts(text);
+      return;
     }
-    window.speechSynthesis.speak(u);
+    try { window.speechSynthesis.speak(u); } catch (e) { /* ignore */ }
   }
 
   function speakCurrent() {
@@ -3851,6 +3985,27 @@ main { padding-top: 26px; }
     });
     $("#setDeepseek").addEventListener("click", applyDeepseekPreset);
     $("#testAi").addEventListener("click", testAi);
+    $("#setSpeechEngine").addEventListener("change", function () {
+      state.speech.engine = $("#setSpeechEngine").value;
+      save();
+      toast("语音方式已切换");
+    });
+    $("#setVoiceName").addEventListener("change", function () {
+      state.speech.voiceName = $("#setVoiceName").value;
+      save();
+    });
+    $("#setTtsUrl").addEventListener("change", function () {
+      state.ai.ttsUrl = $("#setTtsUrl").value.trim() ||
+        "https://api.openai.com/v1/audio/speech";
+      save();
+    });
+    $("#testVoice").addEventListener("click", function () {
+      var text = "你好，我是你的 AI 学习老师。接下来我们一起复习今天的知识。";
+      speakText(text);
+      $("#voiceStatus").textContent = state.speech.engine === "ai" ?
+        "正在请求 AI 语音…" :
+        "已尝试朗读：请听是否有声音；无声请检查系统中文语音或切换到 AI 语音";
+    });
 
     $("#addSubject").addEventListener("click", function () {
       var name = prompt("新科目名称（例如：物理）：", "");
@@ -3973,6 +4128,13 @@ main { padding-top: 26px; }
     $("#reviewDate").value = dateKey(now);
     bindEvents();
     renderAll();
+    if ("speechSynthesis" in window) {
+      refreshVoices();
+      window.speechSynthesis.onvoiceschanged = function () {
+        refreshVoices();
+        renderSettings();
+      };
+    }
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify(state));
     } catch (e) {
@@ -4021,8 +4183,21 @@ main { padding-top: 26px; }
                "kpTitle", "kpMastery", "kpMust", "kpHard", "kpExplain",
                "kpExplainInput", "kpPlay", "kpEditExplain", "kpSaveExplain",
                "kpAiExplain", "kpMustInput", "kpMustAdd", "kpHardInput",
-               "kpHardAdd", "kpEmpty"];
+               "kpHardAdd", "kpEmpty",
+               "setSpeechEngine", "setVoiceName", "setTtsUrl", "testVoice",
+               "voiceStatus"];
     check("ids", ids.every(function (id) { return document.getElementById(id); }));
+    check("speech-default", state.speech.engine === "system" &&
+          aiTtsConfigured() === false);
+    refreshVoices();
+    check("voices-array", Array.isArray(sysVoices));
+    try {
+      speakText("测试语音");
+      check("speak-no-crash", true);
+    } catch (e) {
+      check("speak-no-crash", false);
+      results.push("ERR " + e.message);
+    }
     check("kp-data", KEYPOINTS["数学"]["第2章 有理数"]["2.1 正数与负数"].must.length >= 2 &&
           KEYPOINTS["数学"]["第2章 有理数"]["2.1 正数与负数"].hard.length >= 1);
     var parsedKp = parseKpJson('```json\n{"must":["a","b"],"hard":["c"],"explain":"d"}\n```');
