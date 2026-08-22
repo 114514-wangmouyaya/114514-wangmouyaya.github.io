@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>翻译器</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);color:#e0e0e0;min-height:100vh;}
+.header{background:rgba(20,18,48,0.9);backdrop-filter:blur(12px);padding:12px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid rgba(255,255,255,0.08);}
+.header h1{font-size:20px;background:linear-gradient(135deg,#a78bfa,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.back-btn{background:rgba(167,139,250,0.15);border:1px solid rgba(167,139,250,0.3);color:#a78bfa;padding:6px 16px;border-radius:8px;cursor:pointer;font-size:13px;text-decoration:none;transition:all .2s;}
+.back-btn:hover{background:rgba(167,139,250,0.25);}
+.container{max-width:900px;margin:24px auto;padding:0 16px;}
+.card{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,0.3);}
+.lang-bar{display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;}
+.lang-select{flex:1;min-width:180px;padding:12px 16px;border-radius:10px;border:1px solid rgba(167,139,250,0.3);background:rgba(20,18,48,0.8);color:#e0e0e0;font-size:15px;cursor:pointer;outline:none;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23a78bfa' stroke-width='2' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:36px;}
+.lang-select:focus{border-color:#a78bfa;box-shadow:0 0 12px rgba(167,139,250,0.2);}
+.lang-select option{background:#1e1b4b;color:#e0e0e0;}
+.swap-btn{width:44px;height:44px;border-radius:50%;border:1px solid rgba(167,139,250,0.4);background:rgba(167,139,250,0.15);color:#a78bfa;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .25s;flex-shrink:0;}
+.swap-btn:hover{background:rgba(167,139,250,0.3);transform:rotate(180deg);}
+.text-area{position:relative;margin-bottom:16px;}
+.text-area textarea{width:100%;min-height:160px;padding:16px;border-radius:12px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.25);color:#e0e0e0;font-size:16px;line-height:1.6;resize:vertical;outline:none;font-family:inherit;}
+.text-area textarea:focus{border-color:rgba(167,139,250,0.5);}
+.text-area textarea::placeholder{color:#666;}
+.result-box{width:100%;min-height:160px;padding:16px;border-radius:12px;border:1px solid rgba(167,139,250,0.2);background:rgba(167,139,250,0.06);color:#e0e0e0;font-size:16px;line-height:1.7;white-space:pre-wrap;word-break:break-word;}
+.result-box.loading{color:#a78bfa;}
+.result-box.error{color:#f87171;border-color:rgba(248,113,113,0.3);background:rgba(248,113,113,0.06);}
+.char-count{position:absolute;bottom:10px;right:14px;font-size:12px;color:#666;pointer-events:none;}
+.btn-row{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;}
+.translate-btn{padding:12px 36px;border-radius:10px;border:none;background:linear-gradient(135deg,#10b981,#059669);color:#fff;font-size:15px;font-weight:600;cursor:pointer;transition:all .25s;box-shadow:0 4px 15px rgba(16,185,129,0.3);}
+.translate-btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(16,185,129,0.4);}
+.translate-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none;}
+.clear-btn{padding:12px 24px;border-radius:10px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#ccc;font-size:14px;cursor:pointer;transition:all .2s;}
+.clear-btn:hover{background:rgba(255,255,255,0.1);}
+.copy-btn{padding:10px 20px;border-radius:8px;border:1px solid rgba(167,139,250,0.3);background:rgba(167,139,250,0.1);color:#a78bfa;font-size:13px;cursor:pointer;transition:all .2s;margin-top:10px;}
+.copy-btn:hover{background:rgba(167,139,250,0.2);}
+.label{font-size:13px;color:#a78bfa;margin-bottom:8px;display:block;font-weight:500;}
+.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(16,185,129,0.9);color:#fff;padding:10px 24px;border-radius:10px;font-size:14px;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none;}
+.toast.show{opacity:1;}
+.toast.err{background:rgba(239,68,68,0.9);}
+</style>
+</head>
+<body>
+<div class="header">
+    <a href="/index.html" class="back-btn">← 返回</a>
+    <h1>🌐 翻译器</h1>
+</div>
+<div class="container">
+    <div class="card">
+        <div class="lang-bar">
+            <div style="flex:1;min-width:180px;">
+                <label class="label">源语言</label>
+                <select class="lang-select" id="srcLang">
+                    <option value="auto">自动检测</option>
+                    <option value="zh-CN">中文（简体）</option>
+                    <option value="zh-TW">中文（繁体）</option>
+                    <option value="en">English</option>
+                    <option value="ja">日本語</option>
+                    <option value="ko">한국어</option>
+                    <option value="fr">Français</option>
+                    <option value="de">Deutsch</option>
+                    <option value="es">Español</option>
+                    <option value="ru">Русский</option>
+                    <option value="pt">Português</option>
+                    <option value="it">Italiano</option>
+                    <option value="ar">العربية</option>
+                    <option value="th">ไทย</option>
+                    <option value="vi">Tiếng Việt</option>
+                    <option value="hi">हिन्दी</option>
+                    <option value="id">Bahasa Indonesia</option>
+                    <option value="ms">Bahasa Melayu</option>
+                    <option value="nl">Nederlands</option>
+                    <option value="pl">Polski</option>
+                    <option value="tr">Türkçe</option>
+                    <option value="sv">Svenska</option>
+                    <option value="fi">Suomi</option>
+                    <option value="da">Dansk</option>
+                    <option value="no">Norsk</option>
+                    <option value="cs">Čeština</option>
+                    <option value="el">Ελληνικά</option>
+                    <option value="he">עברית</option>
+                    <option value="uk">Українська</option>
+                    <option value="ro">Română</option>
+                    <option value="hu">Magyar</option>
+                    <option value="bg">Български</option>
+                    <option value="hr">Hrvatski</option>
+                    <option value="sk">Slovenčina</option>
+                    <option value="lt">Lietuvių</option>
+                    <option value="lv">Latviešu</option>
+                    <option value="et">Eesti</option>
+                    <option value="sl">Slovenščina</option>
+                    <option value="sr">Српски</option>
+                    <option value="bn">বাংলা</option>
+                    <option value="ta">தமிழ்</option>
+                    <option value="te">తెలుగు</option>
+                    <option value="ml">മലയാളം</option>
+                    <option value="ur">اردو</option>
+                    <option value="fa">فارسی</option>
+                    <option value="sw">Kiswahili</option>
+                    <option value="af">Afrikaans</option>
+                    <option value="ca">Català</option>
+                    <option value="gl">Galego</option>
+                    <option value="eu">Euskara</option>
+                    <option value="is">Íslenska</option>
+                    <option value="mt">Malti</option>
+                    <option value="ga">Gaeilge</option>
+                    <option value="cy">Cymraeg</option>
+                    <option value="sq">Shqip</option>
+                    <option value="mk">Македонски</option>
+                    <option value="bs">Bosanski</option>
+                    <option value="az">Azərbaycan</option>
+                    <option value="ka">ქართული</option>
+                    <option value="hy">Հայերեն</option>
+                    <option value="km">ខ្មែរ</option>
+                    <option value="lo">ລາວ</option>
+                    <option value="my">မြန်မာ</option>
+                    <option value="ka">ქართული</option>
+                    <option value="ne">नेपाली</option>
+                    <option value="si">සිංහල</option>
+                    <option value="tl">Filipino</option>
+                    <option value="mg">Malagasy</option>
+                    <option value="pa">ਪੰਜਾਬੀ</option>
+                    <option value="gu">ગુજરાતી</option>
+                    <option value="kn">ಕನ್ನಡ</option>
+                    <option value="mr">मराठी</option>
+                    <option value="sindhi">سنڌي</option>
+                    <option value="ku">Kurdî</option>
+                    <option value="am">አማርኛ</option>
+                    <option value="zu">isiZulu</option>
+                    <option value="yo">Yorùbá</option>
+                    <option value="ig">Igbo</option>
+                    <option value="ha">Hausa</option>
+                    <option value="so">Soomaali</option>
+                    <option value="xh">isiXhosa</option>
+                    <option value="st">Sesotho</option>
+                    <option value="tn">Setswana</option>
+                    <option value="sn">chiShona</option>
+                    <option value="rw">Kinyarwanda</option>
+                    <option value="mt">Malti</option>
+                    <option value="lb">Lëtzebuergesch</option>
+                    <option value="fo">Føroyskt</option>
+                    <option value="kl">Kalaallisut</option>
+                    <option value="haw">Ōlelo Hawaiʻi</option>
+                    <option value="mi">Māori</option>
+                    <option value="sm">Gagana Samoa</option>
+                    <option value="to">Lea Fakatonga</option>
+                    <option value="fj">Vosa Vakaviti</option>
+                    <option value="ty">Tahitian</option>
+                    <option value="mg">Malagasy</option>
+                    <option value="eo">Esperanto</option>
+                    <option value="la">Latina</option>
+                    <option value="bo">བོད་སྐད་</option>
+                    <option value="ii">ꆈꌠ꒿</option>
+                    <option value="chr">ᏣᎳᎩ</option>
+                    <option value="yi">ייִדיש</option>
+                    <option value="ug">ئۇيغۇرچە</option>
+                    <option value="sd">سنڌي</option>
+                </select>
+            </div>
+            <button class="swap-btn" id="swapBtn" title="交换语言">⇄</button>
+            <div style="flex:1;min-width:180px;">
+                <label class="label">目标语言</label>
+                <select class="lang-select" id="tgtLang">
+                    <option value="zh-CN" selected>中文（简体）</option>
+                    <option value="zh-TW">中文（繁体）</option>
+                    <option value="en">English</option>
+                    <option value="ja">日本語</option>
+                    <option value="ko">한국어</option>
+                    <option value="fr">Français</option>
+                    <option value="de">Deutsch</option>
+                    <option value="es">Español</option>
+                    <option value="ru">Русский</option>
+                    <option value="pt">Português</option>
+                    <option value="it">Italiano</option>
+                    <option value="ar">العربية</option>
+                    <option value="th">ไทย</option>
+                    <option value="vi">Tiếng Việt</option>
+                    <option value="hi">हिन्दी</option>
+                    <option value="id">Bahasa Indonesia</option>
+                    <option value="ms">Bahasa Melayu</option>
+                    <option value="nl">Nederlands</option>
+                    <option value="pl">Polski</option>
+                    <option value="tr">Türkçe</option>
+                    <option value="sv">Svenska</option>
+                    <option value="fi">Suomi</option>
+                    <option value="da">Dansk</option>
+                    <option value="no">Norsk</option>
+                    <option value="cs">Čeština</option>
+                    <option value="el">Ελληνικά</option>
+                    <option value="he">עברית</option>
+                    <option value="uk">Українська</option>
+                    <option value="ro">Română</option>
+                    <option value="hu">Magyar</option>
+                    <option value="bg">Български</option>
+                    <option value="hr">Hrvatski</option>
+                    <option value="sk">Slovenčina</option>
+                    <option value="lt">Lietuvių</option>
+                    <option value="lv">Latviešu</option>
+                    <option value="et">Eesti</option>
+                    <option value="sl">Slovenščina</option>
+                    <option value="sr">Српски</option>
+                    <option value="bn">বাংলা</option>
+                    <option value="ta">தமிழ்</option>
+                    <option value="te">తెలుగు</option>
+                    <option value="ml">മലയാളം</option>
+                    <option value="ur">اردو</option>
+                    <option value="fa">فارسی</option>
+                    <option value="sw">Kiswahili</option>
+                    <option value="af">Afrikaans</option>
+                    <option value="ca">Català</option>
+                    <option value="gl">Galego</option>
+                    <option value="eu">Euskara</option>
+                    <option value="is">Íslenska</option>
+                    <option value="mt">Malti</option>
+                    <option value="ga">Gaeilge</option>
+                    <option value="cy">Cymraeg</option>
+                    <option value="sq">Shqip</option>
+                    <option value="mk">Македонски</option>
+                    <option value="bs">Bosanski</option>
+                    <option value="az">Azərbaycan</option>
+                    <option value="ka">ქართული</option>
+                    <option value="hy">Հայերեն</option>
+                    <option value="km">ខ្មែរ</option>
+                    <option value="lo">ລາວ</option>
+                    <option value="my">မြန်မာ</option>
+                    <option value="ne">नेपाली</option>
+                    <option value="si">සිංහල</option>
+                    <option value="tl">Filipino</option>
+                    <option value="mg">Malagasy</option>
+                    <option value="pa">ਪੰਜਾਬੀ</option>
+                    <option value="gu">ગુજરાતી</option>
+                    <option value="kn">ಕನ್ನಡ</option>
+                    <option value="mr">मराठी</option>
+                    <option value="ku">Kurdî</option>
+                    <option value="am">አማርኛ</option>
+                    <option value="zu">isiZulu</option>
+                    <option value="yo">Yorùbá</option>
+                    <option value="ig">Igbo</option>
+                    <option value="ha">Hausa</option>
+                    <option value="so">Soomaali</option>
+                    <option value="xh">isiXhosa</option>
+                    <option value="eo">Esperanto</option>
+                    <option value="la">Latina</option>
+                    <option value="bo">བོད་སྐད་</option>
+                    <option value="yi">ייִדיש</option>
+                    <option value="ug">ئۇيغۇرچە</option>
+                </select>
+            </div>
+        </div>
+
+        <label class="label">输入文本</label>
+        <div class="text-area">
+            <textarea id="srcText" placeholder="请输入要翻译的文本..." maxlength="5000"></textarea>
+            <span class="char-count" id="charCount">0 / 5000</span>
+        </div>
+
+        <div class="btn-row">
+            <button class="translate-btn" id="translateBtn">翻译</button>
+            <button class="clear-btn" id="clearBtn">清空</button>
+        </div>
+
+        <label class="label">翻译结果</label>
+        <div class="result-box" id="resultBox">翻译结果将显示在这里</div>
+        <button class="copy-btn" id="copyBtn" style="display:none;">复制结果</button>
+    </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const srcText = document.getElementById('srcText');
+const srcLang = document.getElementById('srcLang');
+const tgtLang = document.getElementById('tgtLang');
+const resultBox = document.getElementById('resultBox');
+const translateBtn = document.getElementById('translateBtn');
+const charCount = document.getElementById('charCount');
+const copyBtn = document.getElementById('copyBtn');
+
+// 字符计数
+srcText.addEventListener('input', ()=>{
+    charCount.textContent = srcText.value.length + ' / 5000';
+});
+
+// 交换语言
+document.getElementById('swapBtn').addEventListener('click', ()=>{
+    const s = srcLang.value;
+    const t = tgtLang.value;
+    if(s === 'auto'){
+        showToast('源语言为自动检测，无法交换', true);
+        return;
+    }
+    srcLang.value = t;
+    tgtLang.value = s;
+    // 交换文本
+    if(resultBox.textContent && resultBox.dataset.translated){
+        srcText.value = resultBox.dataset.translated;
+        resultBox.textContent = '';
+        resultBox.classList.remove('error');
+        copyBtn.style.display = 'none';
+        charCount.textContent = srcText.value.length + ' / 5000';
+    }
+});
+
+// 清空
+document.getElementById('clearBtn').addEventListener('click', ()=>{
+    srcText.value = '';
+    resultBox.textContent = '翻译结果将显示在这里';
+    resultBox.classList.remove('error','loading');
+    resultBox.dataset.translated = '';
+    copyBtn.style.display = 'none';
+    charCount.textContent = '0 / 5000';
+});
+
+// 复制
+copyBtn.addEventListener('click', ()=>{
+    const text = resultBox.dataset.translated || resultBox.textContent;
+    navigator.clipboard.writeText(text).then(()=>{
+        showToast('已复制到剪贴板');
+    }).catch(()=>{
+        // fallback
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('已复制到剪贴板');
+    });
+});
+
+// 翻译
+translateBtn.addEventListener('click', doTranslate);
+srcText.addEventListener('keydown', e=>{
+    if(e.ctrlKey && e.key === 'Enter') doTranslate();
+});
+
+async function doTranslate(){
+    const text = srcText.value.trim();
+    if(!text){ showToast('请输入要翻译的文本', true); return; }
+    const sl = srcLang.value;
+    const tl = tgtLang.value;
+    if(sl === tl && sl !== 'auto'){ showToast('源语言和目标语言相同', true); return; }
+
+    translateBtn.disabled = true;
+    translateBtn.textContent = '翻译中...';
+    resultBox.className = 'result-box loading';
+    resultBox.textContent = '正在翻译，请稍候...';
+    resultBox.dataset.translated = '';
+    copyBtn.style.display = 'none';
+
+    const langpair = (sl === 'auto' ? 'autodetect' : sl) + '|' + tl;
+    const url = 'https://api.mymemory.translated.net/get?q=' +
+        encodeURIComponent(text) + '&langpair=' + encodeURIComponent(langpair) +
+        '&de=tr.anslator@outlook.com';
+
+    try{
+        const resp = await fetch(url);
+        if(!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+
+        if(data.responseStatus === 200 || data.responseStatus === '200'){
+            const translated = data.responseData.translatedText;
+            resultBox.className = 'result-box';
+            resultBox.textContent = translated;
+            resultBox.dataset.translated = translated;
+            copyBtn.style.display = 'inline-block';
+
+            // 显示检测到的源语言
+            if(sl === 'auto' && data.responseData.detectedLanguage){
+                const detected = data.responseData.detectedLanguage;
+                const langName = getLangName(detected);
+                if(langName) showToast('检测到源语言：' + langName);
+            }
+        } else {
+            let msg = '翻译失败';
+            if(data.responseDetails) msg += '：' + data.responseDetails;
+            throw new Error(msg);
+        }
+    }catch(err){
+        resultBox.className = 'result-box error';
+        resultBox.textContent = '翻译出错：' + err.message + '\n\n请检查网络连接后重试。';
+    }finally{
+        translateBtn.disabled = false;
+        translateBtn.textContent = '翻译';
+    }
+}
+
+function getLangName(code){
+    const opt = srcLang.querySelector('option[value="' + code + '"]');
+    return opt ? opt.textContent : null;
+}
+
+function showToast(msg, isErr){
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (isErr ? ' err' : '');
+    setTimeout(()=> t.className = 'toast', 2500);
+}
+</script>
+</body>
+</html>
