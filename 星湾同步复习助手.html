@@ -1748,7 +1748,9 @@ main { padding-top: 26px; }
 
   var ACTIONS = ["通读笔记", "背诵记忆", "重做例题", "完成作业", "错题订正"];
 
-  /* 免费网络语音（无需 Key，需联网；通过 <audio> 播放，不受浏览器 CORS 限制） */
+  /* 免费网络语音（无需 Key，需联网）。
+     首选：微软 Edge 在线语音（edge-tts，国内可直连）；
+     失败后备选：有道、百度在线发音（通过 <audio> 播放，不受 CORS 限制）。 */
   var FREE_TTS_SOURCES = [
     {
       name: "有道",
@@ -1765,6 +1767,125 @@ main { padding-top: 26px; }
       }
     }
   ];
+
+  var EDGE_WSS = "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1";
+  var EDGE_TOKEN = "6A5AA1D4EAFF4E9FB37E23D68491D6F4";
+  var EDGE_VERSION = "1-130.0.2849.68";
+
+  function escapeXml(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+  }
+
+  function base64FromBytes(bytes) {
+    var bin = "";
+    var chunk = 0x8000;
+    for (var i = 0; i < bytes.length; i += chunk) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return btoa(bin);
+  }
+
+  function findBytes(hay, needle) {
+    if (needle.length > hay.length) return -1;
+    outer:
+    for (var i = 0; i <= hay.length - needle.length; i++) {
+      for (var j = 0; j < needle.length; j++) {
+        if (hay[i + j] !== needle[j]) continue outer;
+      }
+      return i;
+    }
+    return -1;
+  }
+
+  function edgeTtsChunk(text) {
+    return new Promise(function (resolve, reject) {
+      if (!("WebSocket" in window) || !window.crypto || !window.crypto.subtle) {
+        reject(new Error("no ws/crypto"));
+        return;
+      }
+      var ts = Math.floor(Date.now() / 1000);
+      var ticks = String(Math.floor((Date.now() / 1000 + 11644473600) * 1e7));
+      window.crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(ticks + EDGE_TOKEN + ts)
+      ).then(function (buf) {
+        var gec = base64FromBytes(new Uint8Array(buf));
+        var connId = uid();
+        var ws = new WebSocket(
+          EDGE_WSS + "?TrustedClientToken=" + EDGE_TOKEN +
+          "&Sec-MS-GEC=" + encodeURIComponent(gec) +
+          "&Sec-MS-GEC-Version=" + EDGE_VERSION +
+          "&ConnectionId=" + connId
+        );
+        var audioChunks = [];
+        var finished = false;
+        var timer = setTimeout(function () {
+          if (!finished) {
+            finished = true;
+            try { ws.close(); } catch (e) { /* ignore */ }
+            reject(new Error("edge timeout"));
+          }
+        }, 20000);
+        ws.binaryType = "arraybuffer";
+        ws.onopen = function () {
+          ws.send(JSON.stringify({
+            context: {
+              synthesis: {
+                audio: {
+                  metadataoptions: {
+                    sentenceBoundaryEnabled: "false",
+                    wordBoundaryEnabled: "true"
+                  },
+                  outputFormat: "audio-24khz-48kbitrate-mono-mp3"
+                }
+              }
+            }
+          }));
+          var ssml = "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' " +
+            "xml:lang='zh-CN'><voice name='zh-CN-XiaoxiaoNeural'>" +
+            "<prosody pitch='+0Hz' rate='+0%' volume='+0%'>" +
+            escapeXml(text) + "</prosody></voice></speak>";
+          ws.send(ssml);
+        };
+        ws.onmessage = function (ev) {
+          if (typeof ev.data === "string") {
+            if (ev.data.indexOf("Path:turn.end") >= 0) {
+              if (!finished) {
+                finished = true;
+                clearTimeout(timer);
+                try { ws.close(); } catch (e) { /* ignore */ }
+                resolve(new Blob(audioChunks, { type: "audio/mpeg" }));
+              }
+            }
+            return;
+          }
+          var buf = new Uint8Array(ev.data);
+          var marker = new Uint8Array([80, 97, 116, 104, 58, 97, 117, 100, 105, 111, 13, 10]);
+          var idx = findBytes(buf, marker);
+          if (idx >= 0) {
+            audioChunks.push(buf.slice(idx + marker.length));
+          } else {
+            audioChunks.push(buf);
+          }
+        };
+        ws.onerror = function () {
+          if (!finished) {
+            finished = true;
+            clearTimeout(timer);
+            reject(new Error("edge ws error"));
+          }
+        };
+        ws.onclose = function () {
+          if (!finished) {
+            finished = true;
+            clearTimeout(timer);
+            reject(new Error("edge closed"));
+          }
+        };
+      }).catch(reject);
+    });
+  }
 
   /* ---------- 离线题库（自动批改 + 解析） ---------- */
   var PRACTICE_BANK = {
@@ -3526,24 +3647,42 @@ main { padding-top: 26px; }
     stopSpeak();
     toast("正在用免费网络语音播放…");
     var chunks = chunkText(String(text || ""));
-    playFreeChunk(chunks, 0, 0);
+    playFreeNext(chunks, 0);
   }
 
-  function playFreeChunk(chunks, idx, srcIdx) {
+  function playFreeNext(chunks, idx) {
     if (idx >= chunks.length) {
       toast("播放完成", true);
       return;
     }
-    if (srcIdx >= FREE_TTS_SOURCES.length) {
+    playChunkWithFallback(chunks, idx, 0);
+  }
+
+  function playChunkWithFallback(chunks, idx, srcIdx) {
+    if (srcIdx === 0) {
+      edgeTtsChunk(chunks[idx]).then(function (blob) {
+        var url = URL.createObjectURL(blob);
+        var audio = new Audio(url);
+        state._ttsAudio = audio;
+        audio.onended = function () { playFreeNext(chunks, idx + 1); };
+        audio.onerror = function () { playChunkWithFallback(chunks, idx, srcIdx + 1); };
+        audio.play().catch(function () { playChunkWithFallback(chunks, idx, srcIdx + 1); });
+      }).catch(function () {
+        playChunkWithFallback(chunks, idx, srcIdx + 1);
+      });
+      return;
+    }
+    var fallbackIdx = srcIdx - 1;
+    if (fallbackIdx >= FREE_TTS_SOURCES.length) {
       toast("免费网络语音暂时不可用，请检查网络后重试");
       return;
     }
-    var url = FREE_TTS_SOURCES[srcIdx].url(chunks[idx]);
+    var url = FREE_TTS_SOURCES[fallbackIdx].url(chunks[idx]);
     var audio = new Audio(url);
     state._ttsAudio = audio;
-    audio.onended = function () { playFreeChunk(chunks, idx + 1, 0); };
-    audio.onerror = function () { playFreeChunk(chunks, idx, srcIdx + 1); };
-    audio.play().catch(function () { playFreeChunk(chunks, idx, srcIdx + 1); });
+    audio.onended = function () { playFreeNext(chunks, idx + 1); };
+    audio.onerror = function () { playChunkWithFallback(chunks, idx, srcIdx + 1); };
+    audio.play().catch(function () { playChunkWithFallback(chunks, idx, srcIdx + 1); });
   }
 
   function speakText(text) {
