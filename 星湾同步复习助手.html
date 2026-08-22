@@ -1616,12 +1616,13 @@ main { padding-top: 26px; }
 
       <div class="card form-card">
         <h2>语音设置</h2>
-        <p class="muted">华为/安卓平板无声，通常是系统没有装中文语音引擎。先点「测试朗读」，不行就在下方切换到「AI 语音播报」（需要 API Key，OpenAI 兼容的 TTS 接口）。</p>
+        <p class="muted">华为/安卓平板无声，通常是浏览器检测不到系统语音。点「测试朗读」试试；不行的话软件会自动改用「免费网络语音」（需联网，不需要 Key），也可以手动在下面切换。</p>
         <div class="form-row">
           <label class="field"><span>语音方式</span>
             <select id="setSpeechEngine">
               <option value="system">系统语音</option>
               <option value="ai">AI 语音播报</option>
+              <option value="free">免费网络语音（无需 Key，需联网）</option>
             </select>
           </label>
           <label class="field"><span>系统语音选择</span>
@@ -1635,8 +1636,14 @@ main { padding-top: 26px; }
         </div>
         <div class="form-actions">
           <button id="testVoice" class="btn">测试朗读</button>
+          <button id="refreshVoicesBtn" class="btn">重新检测语音</button>
           <span id="voiceStatus" class="muted"></span>
         </div>
+        <div class="form-actions">
+          <button id="checkTts" class="btn">检测语音接口</button>
+          <span id="ttsCheckResult" class="muted"></span>
+        </div>
+        <p class="muted">提示：优先用"系统语音"；如果检测不到系统语音、或 AI 语音不可用（DeepSeek 没有语音接口），软件会自动改用"免费网络语音"（需要联网，不需要 Key）。</p>
       </div>
 
       <div class="card form-card">
@@ -1740,6 +1747,24 @@ main { padding-top: 26px; }
   };
 
   var ACTIONS = ["通读笔记", "背诵记忆", "重做例题", "完成作业", "错题订正"];
+
+  /* 免费网络语音（无需 Key，需联网；通过 <audio> 播放，不受浏览器 CORS 限制） */
+  var FREE_TTS_SOURCES = [
+    {
+      name: "有道",
+      url: function (t) {
+        return "https://dict.youdao.com/dictvoice?audio=" +
+          encodeURIComponent(t) + "&type=2";
+      }
+    },
+    {
+      name: "百度",
+      url: function (t) {
+        return "https://fanyi.baidu.com/gettts?lan=zh&text=" +
+          encodeURIComponent(t) + "&spd=3&source=web";
+      }
+    }
+  ];
 
   /* ---------- 离线题库（自动批改 + 解析） ---------- */
   var PRACTICE_BANK = {
@@ -2072,7 +2097,9 @@ main { padding-top: 26px; }
     s.mistakes = Array.isArray(s.mistakes) ? s.mistakes : [];
     s.settings = s.settings && typeof s.settings === "object" ? s.settings : {};
     s.speech = s.speech && typeof s.speech === "object" ? s.speech : {};
-    if (s.speech.engine !== "ai") s.speech.engine = "system";
+    if (s.speech.engine !== "ai" && s.speech.engine !== "free") {
+      s.speech.engine = "system";
+    }
     if (typeof s.speech.voiceName !== "string") s.speech.voiceName = "";
     s.practiceLog = Array.isArray(s.practiceLog) ? s.practiceLog : [];
     s.questions = Array.isArray(s.questions) ? s.questions : [];
@@ -3404,7 +3431,7 @@ main { padding-top: 26px; }
     return !!(state.ai && state.ai.apiKey && state.ai.ttsUrl);
   }
 
-  function aiTts(text) {
+  function aiTts(text, fallback) {
     if (!aiTtsConfigured()) {
       toast("AI 语音需要 API Key，请在设置里填写并开启");
       return;
@@ -3441,28 +3468,45 @@ main { padding-top: 26px; }
         toast("播放失败，请检查音量或网络");
       });
     }).catch(function (err) {
-      toast("AI 语音失败：" + err.message);
+      var msg = err && err.message ? err.message : String(err);
+      if (/failed to fetch|networkerror|load failed|fetch/i.test(msg)) {
+        toast("网络无法访问语音接口，或接口不支持浏览器直连（CORS）。请用系统浏览器打开并检测接口，或改用支持直连的中转地址");
+      } else {
+        toast("AI 语音失败：" + msg);
+      }
+      if (fallback) fallback();
     });
   }
 
-  function speakText(text) {
-    if (state.speech.engine === "ai") {
-      aiTts(text);
+  function checkTtsConnectivity() {
+    var el = $("#ttsCheckResult");
+    if (!state.ai.apiKey) {
+      el.textContent = "请先在 AI 辅导设置里填写 API Key";
       return;
     }
+    el.textContent = "检测中…";
+    fetch(state.ai.ttsUrl, {
+      method: "GET",
+      headers: { "Authorization": "Bearer " + state.ai.apiKey }
+    }).then(function (r) {
+      el.textContent = "接口可达（HTTP " + r.status + "）。可以尝试生成语音；若仍失败请检查模型与 Key 权限";
+    }).catch(function () {
+      el.textContent = "网络不通，或该接口不支持浏览器直连（CORS）。请更换支持直连的中转接口，或改用平板系统语音";
+    });
+  }
+
+  function systemSpeak(text) {
     if (!("speechSynthesis" in window)) {
-      if (aiTtsConfigured()) {
-        toast("系统语音不可用，正在改用 AI 语音…");
-        aiTts(text);
-      } else {
-        toast("当前浏览器不支持语音朗读，请开启系统中文语音或配置 AI 语音");
-      }
+      toast("当前浏览器不支持系统语音，改用免费网络语音…");
+      freeWebTts(text);
       return;
     }
     stopSpeak();
     refreshVoices();
     if (!sysVoices.length) {
-      toast("没有检测到系统语音，已尝试朗读；无声请到「设置→语音设置」处理");
+      toast("系统没有检测到语音，自动改用免费网络语音…");
+      freeWebTts(text);
+      return;
     }
     var u = new SpeechSynthesisUtterance(text);
     u.lang = "zh-CN";
@@ -3470,12 +3514,58 @@ main { padding-top: 26px; }
     var v = bestZhVoice();
     if (v) {
       u.voice = v;
-    } else if (aiTtsConfigured()) {
-      toast("系统没有中文语音，改用 AI 语音播报…");
-      aiTts(text);
-      return;
     }
     try { window.speechSynthesis.speak(u); } catch (e) { /* ignore */ }
+  }
+
+  function isDeepSeekKey() {
+    return (state.ai.baseUrl || "").toLowerCase().indexOf("deepseek") >= 0;
+  }
+
+  function freeWebTts(text) {
+    stopSpeak();
+    toast("正在用免费网络语音播放…");
+    var chunks = chunkText(String(text || ""));
+    playFreeChunk(chunks, 0, 0);
+  }
+
+  function playFreeChunk(chunks, idx, srcIdx) {
+    if (idx >= chunks.length) {
+      toast("播放完成", true);
+      return;
+    }
+    if (srcIdx >= FREE_TTS_SOURCES.length) {
+      toast("免费网络语音暂时不可用，请检查网络后重试");
+      return;
+    }
+    var url = FREE_TTS_SOURCES[srcIdx].url(chunks[idx]);
+    var audio = new Audio(url);
+    state._ttsAudio = audio;
+    audio.onended = function () { playFreeChunk(chunks, idx + 1, 0); };
+    audio.onerror = function () { playFreeChunk(chunks, idx, srcIdx + 1); };
+    audio.play().catch(function () { playFreeChunk(chunks, idx, srcIdx + 1); });
+  }
+
+  function speakText(text) {
+    if (state.speech.engine === "free") {
+      freeWebTts(text);
+      return;
+    }
+    if (state.speech.engine === "ai") {
+      if (!aiTtsConfigured()) {
+        toast("AI 语音未配置，已改用系统语音");
+        systemSpeak(text);
+        return;
+      }
+      if (isDeepSeekKey()) {
+        toast("DeepSeek 接口没有语音（TTS）功能，已自动改用系统语音");
+        systemSpeak(text);
+        return;
+      }
+      aiTts(text, function () { systemSpeak(text); });
+      return;
+    }
+    systemSpeak(text);
   }
 
   function speakCurrent() {
@@ -4006,6 +4096,15 @@ main { padding-top: 26px; }
         "正在请求 AI 语音…" :
         "已尝试朗读：请听是否有声音；无声请检查系统中文语音或切换到 AI 语音";
     });
+    $("#refreshVoicesBtn").addEventListener("click", function () {
+      refreshVoices();
+      renderSettings();
+      toast(sysVoices.length ?
+        "已检测到 " + sysVoices.length + " 个系统语音" :
+        "仍未检测到系统语音，将自动使用免费网络语音",
+        sysVoices.length > 0);
+    });
+    $("#checkTts").addEventListener("click", checkTtsConnectivity);
 
     $("#addSubject").addEventListener("click", function () {
       var name = prompt("新科目名称（例如：物理）：", "");
@@ -4185,7 +4284,8 @@ main { padding-top: 26px; }
                "kpAiExplain", "kpMustInput", "kpMustAdd", "kpHardInput",
                "kpHardAdd", "kpEmpty",
                "setSpeechEngine", "setVoiceName", "setTtsUrl", "testVoice",
-               "voiceStatus"];
+               "voiceStatus", "checkTts", "ttsCheckResult",
+               "refreshVoicesBtn"];
     check("ids", ids.every(function (id) { return document.getElementById(id); }));
     check("speech-default", state.speech.engine === "system" &&
           aiTtsConfigured() === false);
@@ -4196,6 +4296,27 @@ main { padding-top: 26px; }
       check("speak-no-crash", true);
     } catch (e) {
       check("speak-no-crash", false);
+      results.push("ERR " + e.message);
+    }
+    check("deepseek-detect-false", isDeepSeekKey() === false);
+    var savedBase = state.ai.baseUrl;
+    var savedEngine = state.speech.engine;
+    state.ai.baseUrl = "https://api.deepseek.com/v1/chat/completions";
+    state.speech.engine = "ai";
+    try {
+      speakText("测试语音");
+      check("deepseek-fallback", true);
+    } catch (e) {
+      check("deepseek-fallback", false);
+      results.push("ERR " + e.message);
+    }
+    state.ai.baseUrl = savedBase;
+    state.speech.engine = savedEngine;
+    try {
+      freeWebTts("测试");
+      check("free-tts-safe", true);
+    } catch (e) {
+      check("free-tts-safe", false);
       results.push("ERR " + e.message);
     }
     check("kp-data", KEYPOINTS["数学"]["第2章 有理数"]["2.1 正数与负数"].must.length >= 2 &&
