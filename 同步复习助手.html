@@ -1754,6 +1754,7 @@ main { padding-top: 26px; }
         <pre id="modalText"></pre>
       </div>
       <div class="modal-actions">
+        <button id="speakModalBtn" class="btn">🔊 朗读讲解</button>
         <button id="copyReport" class="btn primary">复制报告</button>
       </div>
     </div>
@@ -4262,6 +4263,7 @@ main { padding-top: 26px; }
       "AI 会逐题批改、给出解析，并讲解做错的题。</div>" +
       '<div id="photoExplainStep" class="form-actions" hidden>' +
         '<button id="photoExplainBtn" class="btn">让 AI 再详细讲解错题</button>' +
+        '<button id="speakPhotoBtn" class="btn">🔊 朗读批改结果</button>' +
       "</div>";
     var fileInput = $("#photoFile");
     var photoData = null;
@@ -4309,6 +4311,14 @@ main { padding-top: 26px; }
         box.textContent = text;
         toast("讲解完成", true);
       }).catch(function (err) { toast("AI 讲解失败：" + err.message); });
+    });
+    $("#speakPhotoBtn").addEventListener("click", function () {
+      var box = $("#photoResult");
+      if (!box || !box.textContent || box.classList.contains("loading")) {
+        toast("请先完成批阅");
+        return;
+      }
+      speakText(box.textContent);
     });
   }
 
@@ -5905,8 +5915,12 @@ main { padding-top: 26px; }
                level: level, text: text };
       box.innerHTML =
         '<div class="ai-result">' + esc(text).replace(/\n/g, "<br>") + "</div>" +
+        '<div class="form-actions"><button id="speakPtBtn" class="btn">🔊 朗读试卷与讲解</button></div>' +
         '<div class="form-actions"><button id="ptAiPass" class="btn primary">✅ 我全对，过关</button>' +
         '<button id="ptAiFail" class="btn">❌ 还有错，再练</button></div>';
+      $("#speakPtBtn").addEventListener("click", function () {
+        speakText(text);
+      });
       $("#ptAiPass").addEventListener("click", function () { logPtAi(true); });
       $("#ptAiFail").addEventListener("click", function () { logPtAi(false); });
       $("#ptResult").hidden = true;
@@ -5975,7 +5989,18 @@ main { padding-top: 26px; }
       copyText(text).then(function () { toast("已复制到剪贴板", true); },
         function () { toast("复制失败，请手动选择复制"); });
     });
-    $("#modalClose").addEventListener("click", hideModal);
+    $("#speakModalBtn").addEventListener("click", function () {
+      var text = $("#modalText").textContent;
+      if (!text || text.indexOf("正在") === 0) {
+        toast("内容还没生成好，请稍候再朗读");
+        return;
+      }
+      speakText(text);
+    });
+    $("#modalClose").addEventListener("click", function () {
+      stopSpeak();
+      hideModal();
+    });
     $("#modalMask").addEventListener("click", function (e) {
       if (e.target === $("#modalMask")) hideModal();
     });
@@ -6326,7 +6351,10 @@ main { padding-top: 26px; }
     $("#modalMask").hidden = false;
   }
 
-  function hideModal() { $("#modalMask").hidden = true; }
+  function hideModal() {
+    stopSpeak();
+    $("#modalMask").hidden = true;
+  }
 
   function copyText(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -6417,7 +6445,7 @@ main { padding-top: 26px; }
                "lessonPrev", "lessonNext", "lessonPage", "lessonStage",
                "lessonRate", "lessonSimpler", "lessonExample",
                "lessonPractice", "lessonCopy", "lessonGot", "lessonNotYet",
-               "lessonMeta",
+               "lessonMeta", "speakModalBtn",
                "homeGreeting", "homeDate", "homeMotivate", "homeRing",
                "homeStreak", "homeWeek", "homeMistakes", "homeQuestions",
                "homeTodayList",
