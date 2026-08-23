@@ -64,15 +64,32 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:linear-gradi
 .loading .spinner{display:inline-block;width:32px;height:32px;border:3px solid rgba(167,139,250,0.2);border-top-color:#a78bfa;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:12px;}
 @keyframes spin{to{transform:rotate(360deg);}}
 
-/* 阅读器 */
-.reader-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(10,8,25,0.97);z-index:100;display:none;flex-direction:column;}
+/* 阅读器 - 翻书效果 */
+.reader-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(10,8,25,0.98);z-index:100;display:none;flex-direction:column;}
 .reader-overlay.active{display:flex;}
 .reader-header{padding:10px 20px;display:flex;align-items:center;gap:14px;border-bottom:1px solid rgba(255,255,255,0.08);background:rgba(20,18,48,0.95);flex-shrink:0;}
 .reader-header h2{font-size:15px;color:#e0e0e0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .reader-close{background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#f87171;padding:6px 16px;border-radius:8px;cursor:pointer;font-size:13px;transition:all .2s;}
 .reader-close:hover{background:rgba(239,68,68,0.25);}
-.reader-body{flex:1;overflow-y:auto;overflow-x:hidden;display:flex;justify-content:center;padding:20px;}
-.reader-body img{max-width:100%;height:auto;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,0.5);margin-bottom:8px;display:block;}
+.reader-body{flex:1;display:flex;align-items:center;justify-content:center;perspective:2000px;perspective-origin:center center;overflow:hidden;position:relative;padding:20px;}
+
+.book{position:relative;transform-style:preserve-3d;}
+.book-page{position:absolute;top:0;left:0;width:100%;height:100%;backface-visibility:hidden;border-radius:4px 8px 8px 4px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.5);}
+.book-page img{width:100%;height:100%;object-fit:contain;display:block;background:#1a1a2e;}
+.book-page.page-back{transform:rotateY(180deg);border-radius:8px 4px 4px 8px;}
+.book-page.page-static{position:relative;z-index:1;}
+.book-page.page-flipping{position:absolute;top:0;left:0;z-index:10;transform-origin:left center;}
+.book-page.page-flipping.prev{transform-origin:right center;}
+
+/* 书页阴影和渐变 */
+.book-page::after{content:'';position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;border-radius:inherit;}
+.page-front::after{background:linear-gradient(to right,rgba(0,0,0,0.15) 0%,transparent 5%,transparent 95%,rgba(0,0,0,0.1) 100%);}
+.page-back::after{background:linear-gradient(to left,rgba(0,0,0,0.15) 0%,transparent 5%,transparent 95%,rgba(0,0,0,0.1) 100%);}
+
+/* 翻页时的动态阴影 */
+.flip-shadow{position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:15;border-radius:4px;opacity:0;transition:opacity .3s;}
+.flip-shadow.active{opacity:1;}
+
 .reader-footer{padding:10px 20px;display:flex;align-items:center;justify-content:center;gap:16px;border-top:1px solid rgba(255,255,255,0.08);background:rgba(20,18,48,0.95);flex-shrink:0;flex-wrap:wrap;}
 .page-btn{padding:8px 20px;border-radius:8px;border:1px solid rgba(167,139,250,0.3);background:rgba(167,139,250,0.1);color:#a78bfa;font-size:14px;cursor:pointer;transition:all .2s;}
 .page-btn:hover:not(:disabled){background:rgba(167,139,250,0.25);}
@@ -83,6 +100,9 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:linear-gradi
 .page-jump input:focus{border-color:#a78bfa;}
 .page-jump button{padding:5px 12px;border-radius:6px;border:1px solid rgba(167,139,250,0.3);background:rgba(167,139,250,0.1);color:#a78bfa;font-size:12px;cursor:pointer;}
 .page-jump button:hover{background:rgba(167,139,250,0.25);}
+
+.page-loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#a78bfa;font-size:14px;z-index:5;display:flex;flex-direction:column;align-items:center;gap:10px;}
+.page-loading .spinner{width:30px;height:30px;border:3px solid rgba(167,139,250,0.2);border-top-color:#a78bfa;border-radius:50%;animation:spin 0.8s linear infinite;}
 
 .toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(16,185,129,0.9);color:#fff;padding:10px 24px;border-radius:10px;font-size:14px;z-index:200;opacity:0;transition:opacity .3s;pointer-events:none;}
 .toast.show{opacity:1;}
@@ -154,7 +174,17 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:linear-gradi
         <h2 id="readerTitle"></h2>
         <button class="reader-close" id="readerClose">关闭</button>
     </div>
-    <div class="reader-body" id="readerBody"></div>
+    <div class="reader-body" id="readerBody">
+        <div class="book" id="book">
+            <div class="book-page page-static" id="staticPage">
+                <img id="staticImg" src="" alt="">
+            </div>
+        </div>
+        <div class="page-loading" id="pageLoading" style="display:none;">
+            <div class="spinner"></div>
+            <span>翻页中...</span>
+        </div>
+    </div>
     <div class="reader-footer">
         <button class="page-btn" id="prevPage">← 上一页</button>
         <span class="page-info" id="pageInfo">0 / 0</span>
@@ -382,69 +412,182 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:linear-gradi
         return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    // ============ 阅读器 ============
+    // ============ 阅读器（翻书效果） ============
     var readerBook = null;
     var currentPage = 1;
+    var isFlipping = false;
+    var flipDuration = 700; // ms
+
+    // 预加载图片缓存
+    var imgCache = {};
+    function getImg(pageNum){
+        if(imgCache[pageNum]) return imgCache[pageNum];
+        var img = new Image();
+        img.referrerPolicy = 'no-referrer';
+        img.src = readerBook.b + pageNum + '.jpg';
+        imgCache[pageNum] = img;
+        return img;
+    }
+
+    function calcBookSize(){
+        var body = $('readerBody');
+        var maxH = body.clientHeight - 40;
+        var maxW = body.clientWidth - 40;
+        // 课本图片比例约 696:983
+        var ratio = 696 / 983;
+        var h = maxH;
+        var w = h * ratio;
+        if(w > maxW){ w = maxW; h = w / ratio; }
+        return { w: Math.round(w), h: Math.round(h) };
+    }
 
     function openReader(b){
         readerBook = b;
         currentPage = 1;
+        isFlipping = false;
+        imgCache = {};
         $('readerTitle').textContent = b.t + '（' + (b.s||'') + ' ' + (b.k||'') + ' ' + (b.v||'') + '）';
         $('reader').classList.add('active');
-        renderPage();
-        $('readerBody').scrollTop = 0;
+        // 预加载前3页
+        [1,2,3].forEach(function(n){ if(n<=b.p) getImg(n); });
+        setTimeout(function(){
+            var size = calcBookSize();
+            var book = $('book');
+            book.style.width = size.w + 'px';
+            book.style.height = size.h + 'px';
+            renderStaticPage(1);
+            updatePageInfo();
+        }, 50);
     }
 
-    function renderPage(){
-        var body = $('readerBody');
+    function renderStaticPage(pageNum){
+        var img = getImg(pageNum);
+        var staticImg = $('staticImg');
+        staticImg.src = img.src;
+        staticImg.onerror = function(){
+            this.style.opacity = '0.3';
+            this.alt = '第' + pageNum + '页加载失败';
+        };
+    }
+
+    function updatePageInfo(){
         var total = readerBook.p;
         $('pageInfo').textContent = currentPage + ' / ' + total;
-        $('prevPage').disabled = currentPage <= 1;
-        $('nextPage').disabled = currentPage >= total;
+        $('prevPage').disabled = currentPage <= 1 || isFlipping;
+        $('nextPage').disabled = currentPage >= total || isFlipping;
         $('jumpInput').value = currentPage;
         $('jumpInput').max = total;
-
-        var pagesToLoad = [currentPage];
-        if(currentPage > 1) pagesToLoad.unshift(currentPage-1);
-        if(currentPage < total) pagesToLoad.push(currentPage+1);
-
-        body.innerHTML = '';
-        pagesToLoad.forEach(function(pn){
-            var img = document.createElement('img');
-            img.src = readerBook.b + pn + '.jpg';
-            img.alt = '第' + pn + '页';
-            img.referrerPolicy = 'no-referrer';
-            if(pn === currentPage){
-                img.style.border = '2px solid rgba(167,139,250,0.5)';
-            }
-            img.onerror = function(){
-                this.style.display = 'none';
-                var d = document.createElement('div');
-                d.style.cssText = 'color:#666;padding:20px;text-align:center;';
-                d.textContent = '第' + pn + '页加载失败';
-                body.appendChild(d);
-            };
-            body.appendChild(img);
-        });
-
-        setTimeout(function(){
-            var imgs = body.querySelectorAll('img');
-            var targetIdx = pagesToLoad.indexOf(currentPage);
-            if(imgs[targetIdx]){
-                imgs[targetIdx].scrollIntoView({behavior:'smooth', block:'start'});
-            }
-        }, 100);
     }
 
-    $('prevPage').addEventListener('click', function(){
-        if(currentPage > 1){ currentPage--; renderPage(); }
-    });
-    $('nextPage').addEventListener('click', function(){
-        if(currentPage < readerBook.p){ currentPage++; renderPage(); }
-    });
+    function flipTo(targetPage){
+        if(isFlipping) return;
+        if(targetPage < 1 || targetPage > readerBook.p) return;
+        if(targetPage === currentPage) return;
+
+        isFlipping = true;
+        updatePageInfo();
+
+        var direction = targetPage > currentPage ? 'next' : 'prev';
+        var book = $('book');
+        var size = calcBookSize();
+        book.style.width = size.w + 'px';
+        book.style.height = size.h + 'px';
+
+        // 预加载目标页
+        getImg(targetPage);
+        if(targetPage < readerBook.p) getImg(targetPage + 1);
+        if(targetPage > 1) getImg(targetPage - 1);
+
+        // 创建翻转页
+        var flipPage = document.createElement('div');
+        flipPage.className = 'book-page page-flipping' + (direction === 'prev' ? ' prev' : '');
+        flipPage.style.width = size.w + 'px';
+        flipPage.style.height = size.h + 'px';
+
+        // 正面（当前页）
+        var front = document.createElement('div');
+        front.className = 'book-page page-front';
+        front.style.width = '100%';
+        front.style.height = '100%';
+        front.style.position = 'absolute';
+        front.style.zIndex = '2';
+        var frontImg = document.createElement('img');
+        frontImg.src = getImg(currentPage).src;
+        frontImg.referrerPolicy = 'no-referrer';
+        frontImg.style.width = '100%';
+        frontImg.style.height = '100%';
+        frontImg.style.objectFit = 'contain';
+        front.appendChild(frontImg);
+
+        // 背面（目标页）
+        var back = document.createElement('div');
+        back.className = 'book-page page-back';
+        back.style.width = '100%';
+        back.style.height = '100%';
+        back.style.position = 'absolute';
+        back.style.zIndex = '1';
+        var backImg = document.createElement('img');
+        backImg.src = getImg(targetPage).src;
+        backImg.referrerPolicy = 'no-referrer';
+        backImg.style.width = '100%';
+        backImg.style.height = '100%';
+        backImg.style.objectFit = 'contain';
+        back.appendChild(backImg);
+
+        // 阴影层
+        var shadow = document.createElement('div');
+        shadow.className = 'flip-shadow';
+        shadow.style.background = direction === 'next'
+            ? 'linear-gradient(to left, rgba(0,0,0,0.4) 0%, transparent 40%)'
+            : 'linear-gradient(to right, rgba(0,0,0,0.4) 0%, transparent 40%)';
+
+        flipPage.appendChild(back);
+        flipPage.appendChild(front);
+        flipPage.appendChild(shadow);
+        book.appendChild(flipPage);
+
+        // 底层先显示目标页（翻完后露出的页面）
+        renderStaticPage(targetPage);
+
+        // 强制reflow后开始动画
+        void flipPage.offsetWidth;
+
+        if(direction === 'next'){
+            flipPage.style.transformOrigin = 'left center';
+            flipPage.style.transition = 'transform ' + flipDuration + 'ms ease-in-out';
+            flipPage.style.transform = 'rotateY(-180deg)';
+        } else {
+            flipPage.style.transformOrigin = 'right center';
+            flipPage.style.transition = 'transform ' + flipDuration + 'ms ease-in-out';
+            flipPage.style.transform = 'rotateY(180deg)';
+        }
+
+        // 阴影渐变
+        setTimeout(function(){ shadow.classList.add('active'); }, 50);
+        setTimeout(function(){ shadow.classList.remove('active'); }, flipDuration - 200);
+
+        // 动画结束
+        setTimeout(function(){
+            flipPage.remove();
+            currentPage = targetPage;
+            isFlipping = false;
+            renderStaticPage(currentPage);
+            updatePageInfo();
+        }, flipDuration + 20);
+    }
+
+    function goNext(){
+        if(currentPage < readerBook.p && !isFlipping) flipTo(currentPage + 1);
+    }
+    function goPrev(){
+        if(currentPage > 1 && !isFlipping) flipTo(currentPage - 1);
+    }
+
+    $('prevPage').addEventListener('click', goPrev);
+    $('nextPage').addEventListener('click', goNext);
     $('jumpBtn').addEventListener('click', function(){
         var n = parseInt($('jumpInput').value);
-        if(n >= 1 && n <= readerBook.p){ currentPage = n; renderPage(); }
+        if(n >= 1 && n <= readerBook.p && n !== currentPage) flipTo(n);
     });
     $('jumpInput').addEventListener('keydown', function(e){
         if(e.key === 'Enter') $('jumpBtn').click();
@@ -452,13 +595,24 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:linear-gradi
     $('readerClose').addEventListener('click', function(){
         $('reader').classList.remove('active');
         readerBook = null;
+        isFlipping = false;
     });
 
+    // 键盘翻页
     document.addEventListener('keydown', function(e){
         if(!$('reader').classList.contains('active')) return;
-        if(e.key === 'ArrowLeft') $('prevPage').click();
-        if(e.key === 'ArrowRight') $('nextPage').click();
+        if(e.key === 'ArrowLeft') goPrev();
+        if(e.key === 'ArrowRight') goNext();
         if(e.key === 'Escape') $('readerClose').click();
+    });
+
+    // 窗口大小变化时重新计算
+    window.addEventListener('resize', function(){
+        if(!readerBook || !$('reader').classList.contains('active')) return;
+        var size = calcBookSize();
+        var book = $('book');
+        book.style.width = size.w + 'px';
+        book.style.height = size.h + 'px';
     });
 
     // ============ 按钮事件 ============
