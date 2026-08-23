@@ -16,11 +16,28 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:linear-gradi
 
 /* 筛选栏 */
 .filter-bar{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:18px;margin-bottom:20px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;}
-.filter-item{display:flex;flex-direction:column;gap:5px;flex:1;min-width:130px;}
+.filter-item{display:flex;flex-direction:column;gap:5px;flex:1;min-width:140px;position:relative;}
 .filter-item label{font-size:12px;color:#a78bfa;font-weight:500;}
-.filter-item select{padding:9px 12px;border-radius:8px;border:1px solid rgba(167,139,250,0.3);background:rgba(20,18,48,0.8);color:#e0e0e0;font-size:14px;cursor:pointer;outline:none;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23a78bfa' stroke-width='2' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:30px;}
-.filter-item select:focus{border-color:#a78bfa;box-shadow:0 0 10px rgba(167,139,250,0.2);}
-.filter-item select option{background:#1e1b4b;color:#e0e0e0;}
+.combo-wrap{position:relative;}
+.combo-input{width:100%;padding:9px 30px 9px 12px;border-radius:8px;border:1px solid rgba(167,139,250,0.3);background:rgba(20,18,48,0.8);color:#e0e0e0;font-size:14px;cursor:pointer;outline:none;}
+.combo-input::placeholder{color:#666;}
+.combo-input:focus{border-color:#a78bfa;box-shadow:0 0 10px rgba(167,139,250,0.2);cursor:text;}
+.combo-arrow{position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:#a78bfa;font-size:10px;transition:transform .2s;}
+.combo-wrap.open .combo-arrow{transform:translateY(-50%) rotate(180deg);}
+.combo-list{position:absolute;top:calc(100% + 4px);left:0;right:0;max-height:280px;overflow-y:auto;background:#1a1740;border:1px solid rgba(167,139,250,0.3);border-radius:8px;z-index:60;display:none;box-shadow:0 8px 24px rgba(0,0,0,0.5);}
+.combo-wrap.open .combo-list{display:block;}
+.combo-opt{padding:8px 12px;font-size:13px;color:#ccc;cursor:pointer;transition:background .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.combo-opt:hover,.combo-opt.active{background:rgba(167,139,250,0.2);color:#fff;}
+.combo-opt.selected{color:#a78bfa;font-weight:600;}
+.combo-opt.count{color:#666;font-size:11px;float:right;}
+.combo-empty{padding:12px;text-align:center;color:#666;font-size:13px;}
+
+/* 关键词搜索 */
+.keyword-item{min-width:200px;flex:1.5;}
+.keyword-input{width:100%;padding:9px 12px;border-radius:8px;border:1px solid rgba(167,139,250,0.3);background:rgba(20,18,48,0.8);color:#e0e0e0;font-size:14px;outline:none;}
+.keyword-input:focus{border-color:#a78bfa;box-shadow:0 0 10px rgba(167,139,250,0.2);}
+.keyword-input::placeholder{color:#666;}
+
 .search-btn{padding:9px 28px;border-radius:8px;border:none;background:linear-gradient(135deg,#10b981,#059669);color:#fff;font-size:14px;font-weight:600;cursor:pointer;transition:all .25s;box-shadow:0 4px 12px rgba(16,185,129,0.3);white-space:nowrap;height:38px;}
 .search-btn:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(16,185,129,0.4);}
 .reset-btn{padding:9px 20px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#ccc;font-size:14px;cursor:pointer;transition:all .2s;height:38px;}
@@ -56,7 +73,7 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:linear-gradi
 .reader-close:hover{background:rgba(239,68,68,0.25);}
 .reader-body{flex:1;overflow-y:auto;overflow-x:hidden;display:flex;justify-content:center;padding:20px;}
 .reader-body img{max-width:100%;height:auto;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,0.5);margin-bottom:8px;display:block;}
-.reader-footer{padding:10px 20px;display:flex;align-items:center;justify-content:center;gap:16px;border-top:1px solid rgba(255,255,255,0.08);background:rgba(20,18,48,0.95);flex-shrink:0;}
+.reader-footer{padding:10px 20px;display:flex;align-items:center;justify-content:center;gap:16px;border-top:1px solid rgba(255,255,255,0.08);background:rgba(20,18,48,0.95);flex-shrink:0;flex-wrap:wrap;}
 .page-btn{padding:8px 20px;border-radius:8px;border:1px solid rgba(167,139,250,0.3);background:rgba(167,139,250,0.1);color:#a78bfa;font-size:14px;cursor:pointer;transition:all .2s;}
 .page-btn:hover:not(:disabled){background:rgba(167,139,250,0.25);}
 .page-btn:disabled{opacity:0.3;cursor:not-allowed;}
@@ -80,30 +97,54 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:linear-gradi
     <div class="filter-bar">
         <div class="filter-item">
             <label>学段</label>
-            <select id="fStage"><option value="">全部</option></select>
+            <div class="combo-wrap" id="wrapStage">
+                <input type="text" class="combo-input" id="fStage" placeholder="全部" autocomplete="off">
+                <span class="combo-arrow">▼</span>
+                <div class="combo-list"></div>
+            </div>
         </div>
         <div class="filter-item">
             <label>年级</label>
-            <select id="fGrade"><option value="">全部</option></select>
+            <div class="combo-wrap" id="wrapGrade">
+                <input type="text" class="combo-input" id="fGrade" placeholder="全部" autocomplete="off">
+                <span class="combo-arrow">▼</span>
+                <div class="combo-list"></div>
+            </div>
         </div>
         <div class="filter-item">
             <label>册次</label>
-            <select id="fVolume"><option value="">全部</option></select>
+            <div class="combo-wrap" id="wrapVolume">
+                <input type="text" class="combo-input" id="fVolume" placeholder="全部" autocomplete="off">
+                <span class="combo-arrow">▼</span>
+                <div class="combo-list"></div>
+            </div>
         </div>
         <div class="filter-item">
             <label>学科</label>
-            <select id="fSubject"><option value="">全部</option></select>
+            <div class="combo-wrap" id="wrapSubject">
+                <input type="text" class="combo-input" id="fSubject" placeholder="全部" autocomplete="off">
+                <span class="combo-arrow">▼</span>
+                <div class="combo-list"></div>
+            </div>
         </div>
         <div class="filter-item">
             <label>版本（出版社）</label>
-            <select id="fVersion"><option value="">全部</option></select>
+            <div class="combo-wrap" id="wrapVersion">
+                <input type="text" class="combo-input" id="fVersion" placeholder="全部" autocomplete="off">
+                <span class="combo-arrow">▼</span>
+                <div class="combo-list"></div>
+            </div>
+        </div>
+        <div class="filter-item keyword-item">
+            <label>搜索书名</label>
+            <input type="text" class="keyword-input" id="fKeyword" placeholder="输入书名关键词，如：语文 七年级" autocomplete="off">
         </div>
         <button class="search-btn" id="searchBtn">搜索课本</button>
         <button class="reset-btn" id="resetBtn">重置</button>
     </div>
     <div class="result-info" id="resultInfo"></div>
     <div id="results">
-        <div class="empty">请选择筛选条件后点击「搜索课本」</div>
+        <div class="empty">请选择筛选条件或输入关键词后点击「搜索课本」</div>
     </div>
 </div>
 
@@ -132,94 +173,174 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:linear-gradi
 (function(){
     "use strict";
 
-    const data = EBOOK_DATA;
-    const $ = id => document.getElementById(id);
+    var data = EBOOK_DATA;
+    var $ = function(id){ return document.getElementById(id); };
+
+    // 筛选值存储
+    var filters = { stage:'', grade:'', volume:'', subject:'', version:'', keyword:'' };
 
     // 收集筛选选项
     function unique(arr){ return [...new Set(arr.filter(x=>x))].sort(); }
-    const stages = unique(data.map(b=>b.s));
-    const grades = unique(data.map(b=>b.g));
-    const volumes = unique(data.map(b=>b.c));
-    const subjects = unique(data.map(b=>b.k));
-    const versions = unique(data.map(b=>b.v));
+    var stages = unique(data.map(b=>b.s));
+    var grades = unique(data.map(b=>b.g));
+    var volumes = unique(data.map(b=>b.c));
+    var subjects = unique(data.map(b=>b.k));
+    var versions = unique(data.map(b=>b.v));
 
-    // 年级排序
-    const gradeOrder = ['一年级','二年级','三年级','四年级','五年级','六年级','七年级','八年级','九年级','高一','高二','高三'];
-    // 简单的自定义排序
     function smartSort(arr, order){
-        const sorted = [];
-        order.forEach(g => {
-            arr.forEach(x => {
-                if(x.indexOf(g) >= 0 || g.indexOf(x) >= 0) {
+        var sorted = [];
+        order.forEach(function(g){
+            arr.forEach(function(x){
+                if(x.indexOf(g) >= 0 || g.indexOf(x) >= 0){
                     if(sorted.indexOf(x) < 0) sorted.push(x);
                 }
             });
         });
-        arr.forEach(x => { if(sorted.indexOf(x) < 0) sorted.push(x); });
+        arr.forEach(function(x){ if(sorted.indexOf(x) < 0) sorted.push(x); });
         return sorted;
     }
 
-    function fillSelect(id, items){
-        const sel = $(id);
-        items.forEach(v=>{
-            const o = document.createElement('option');
-            o.value = v; o.textContent = v;
-            sel.appendChild(o);
-        });
-    }
-
-    // 学段按 小学→初中→高中 排序
-    const stageOrder = ['小学','初中','高中','特殊教育'];
-    const sortedStages = smartSort(stages, stageOrder);
-    fillSelect('fStage', sortedStages);
-
-    // 年级排序
-    const gOrder = ['一年级','二年级','三年级','四年级','五年级','六年级','七年级','八年级','九年级','高一年级','高二年级','高三年级'];
-    fillSelect('fGrade', smartSort(grades, gOrder));
-
-    // 册次排序：上册→下册→全一册→其他
-    const volOrder = ['上册','下册','全一册','必修','选择性必修'];
-    const sortedVols = [];
-    ['上册','下册','全一册'].forEach(v=>{
-        volumes.forEach(x=>{ if(x===v && sortedVols.indexOf(x)<0) sortedVols.push(x); });
+    // 排序
+    var sortedStages = smartSort(stages, ['小学','初中','高中','特殊教育']);
+    var sortedGrades = smartSort(grades, ['一年级','二年级','三年级','四年级','五年级','六年级','七年级','八年级','九年级','高一年级','高二年级','高三年级']);
+    var sortedVols = [];
+    ['上册','下册','全一册'].forEach(function(v){
+        volumes.forEach(function(x){ if(x===v && sortedVols.indexOf(x)<0) sortedVols.push(x); });
     });
-    volumes.forEach(x=>{
+    volumes.forEach(function(x){
         if(x.indexOf('必修')>=0 || x.indexOf('第')>=0 || x.indexOf('册')>=0){
             if(sortedVols.indexOf(x)<0) sortedVols.push(x);
         }
     });
-    volumes.forEach(x=>{ if(sortedVols.indexOf(x)<0) sortedVols.push(x); });
-    fillSelect('fVolume', sortedVols);
+    volumes.forEach(function(x){ if(sortedVols.indexOf(x)<0) sortedVols.push(x); });
 
-    fillSelect('fSubject', subjects);
-    fillSelect('fVersion', versions);
+    // ============ 可搜索下拉框组件 ============
+    function initCombo(inputId, wrapId, options, filterKey){
+        var input = $(inputId);
+        var wrap = $(wrapId);
+        var list = wrap.querySelector('.combo-list');
+        var selected = '';
 
-    // 搜索
-    let currentResults = [];
+        function renderList(searchText){
+            var filtered = options;
+            if(searchText){
+                var q = searchText.toLowerCase();
+                filtered = options.filter(function(o){ return o.toLowerCase().indexOf(q) >= 0; });
+            }
+            list.innerHTML = '';
+            // "全部"选项
+            var allOpt = document.createElement('div');
+            allOpt.className = 'combo-opt' + (selected==='' ? ' selected' : '');
+            allOpt.innerHTML = '全部' + '<span class="count">' + data.length + '</span>';
+            allOpt.addEventListener('mousedown', function(e){
+                e.preventDefault();
+                selected = '';
+                input.value = '';
+                filters[filterKey] = '';
+                wrap.classList.remove('open');
+                doSearch();
+            });
+            list.appendChild(allOpt);
 
+            if(!filtered.length){
+                var empty = document.createElement('div');
+                empty.className = 'combo-empty';
+                empty.textContent = '无匹配结果';
+                list.appendChild(empty);
+                return;
+            }
+            filtered.forEach(function(opt){
+                var div = document.createElement('div');
+                div.className = 'combo-opt' + (selected===opt ? ' selected' : '');
+                div.textContent = opt;
+                div.addEventListener('mousedown', function(e){
+                    e.preventDefault();
+                    selected = opt;
+                    input.value = opt;
+                    filters[filterKey] = opt;
+                    wrap.classList.remove('open');
+                    doSearch();
+                });
+                list.appendChild(div);
+            });
+        }
+
+        input.addEventListener('focus', function(){
+            wrap.classList.add('open');
+            renderList(input.value);
+        });
+        input.addEventListener('input', function(){
+            wrap.classList.add('open');
+            renderList(input.value);
+            // 输入时清除已选值
+            if(input.value !== selected){
+                selected = '';
+                filters[filterKey] = '';
+            }
+        });
+        input.addEventListener('keydown', function(e){
+            if(e.key === 'Enter'){
+                e.preventDefault();
+                // 如果有过滤结果，选第一个匹配项
+                var firstMatch = list.querySelector('.combo-opt:not(.selected)');
+                if(firstMatch && input.value){
+                    firstMatch.dispatchEvent(new MouseEvent('mousedown', {bubbles:true}));
+                } else {
+                    wrap.classList.remove('open');
+                    doSearch();
+                }
+            }
+            if(e.key === 'Escape'){
+                wrap.classList.remove('open');
+                input.value = selected;
+            }
+        });
+
+        // 点击外部关闭
+        document.addEventListener('click', function(e){
+            if(!wrap.contains(e.target)){
+                wrap.classList.remove('open');
+                if(input.value !== selected){
+                    input.value = selected;
+                }
+            }
+        });
+
+        return {
+            reset: function(){ selected=''; input.value=''; filters[filterKey]=''; }
+        };
+    }
+
+    var comboStage = initCombo('fStage','wrapStage', sortedStages, 'stage');
+    var comboGrade = initCombo('fGrade','wrapGrade', sortedGrades, 'grade');
+    var comboVolume = initCombo('fVolume','wrapVolume', sortedVols, 'volume');
+    var comboSubject = initCombo('fSubject','wrapSubject', subjects, 'subject');
+    var comboVersion = initCombo('fVersion','wrapVersion', versions, 'version');
+
+    // ============ 搜索 ============
     function doSearch(){
-        const sv = $('fStage').value;
-        const gv = $('fGrade').value;
-        const vv = $('fVolume').value;
-        const kv = $('fSubject').value;
-        const bv = $('fVersion').value;
+        var kw = $('fKeyword').value.trim().toLowerCase();
+        filters.keyword = kw;
 
-        const results = data.filter(b=>{
-            if(sv && b.s !== sv) return false;
-            if(gv && b.g !== gv) return false;
-            if(vv && b.c !== vv) return false;
-            if(kv && b.k !== kv) return false;
-            if(bv && b.v !== bv) return false;
+        var results = data.filter(function(b){
+            if(filters.stage && b.s !== filters.stage) return false;
+            if(filters.grade && b.g !== filters.grade) return false;
+            if(filters.volume && b.c !== filters.volume) return false;
+            if(filters.subject && b.k !== filters.subject) return false;
+            if(filters.version && b.v !== filters.version) return false;
+            if(kw){
+                var haystack = (b.t + ' ' + (b.s||'') + ' ' + (b.k||'') + ' ' + (b.v||'') + ' ' + (b.g||'') + ' ' + (b.c||'') + ' ' + (b.pub||'')).toLowerCase();
+                if(haystack.indexOf(kw) < 0) return false;
+            }
             return true;
         });
 
-        currentResults = results;
         renderResults(results);
     }
 
     function renderResults(books){
-        const box = $('results');
-        const info = $('resultInfo');
+        var box = $('results');
+        var info = $('resultInfo');
 
         if(!books.length){
             info.innerHTML = '';
@@ -230,13 +351,13 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:linear-gradi
         info.innerHTML = '找到 <span>' + books.length + '</span> 本课本';
 
         box.innerHTML = '';
-        const grid = document.createElement('div');
+        var grid = document.createElement('div');
         grid.className = 'book-grid';
 
-        books.forEach((b,idx)=>{
-            const card = document.createElement('div');
+        books.forEach(function(b){
+            var card = document.createElement('div');
             card.className = 'book-card';
-            const coverHtml = b.th
+            var coverHtml = b.th
                 ? '<img src="' + b.th + '" alt="' + esc(b.t) + '" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display=\'none\';this.parentElement.innerHTML=\'<div class=no-cover>📕</div>\'">'
                 : '<div class="no-cover">📕</div>';
             card.innerHTML =
@@ -247,7 +368,7 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:linear-gradi
                     '<div class="book-meta">' + esc(b.v||'') + (b.pub?' · '+esc(b.pub):'') + '</div>' +
                     (b.p>0 ? '<div class="book-pages">' + b.p + ' 页</div>' : '<div class="book-pages" style="color:#666">暂无预览</div>') +
                 '</div>';
-            card.addEventListener('click', ()=>{
+            card.addEventListener('click', function(){
                 if(b.p>0 && b.b) openReader(b);
                 else showToast('该课本暂无在线预览');
             });
@@ -261,9 +382,9 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:linear-gradi
         return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    // 阅读器
-    let readerBook = null;
-    let currentPage = 1;
+    // ============ 阅读器 ============
+    var readerBook = null;
+    var currentPage = 1;
 
     function openReader(b){
         readerBook = b;
@@ -275,22 +396,21 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:linear-gradi
     }
 
     function renderPage(){
-        const body = $('readerBody');
-        const total = readerBook.p;
+        var body = $('readerBody');
+        var total = readerBook.p;
         $('pageInfo').textContent = currentPage + ' / ' + total;
         $('prevPage').disabled = currentPage <= 1;
         $('nextPage').disabled = currentPage >= total;
         $('jumpInput').value = currentPage;
         $('jumpInput').max = total;
 
-        // 渲染当前页（预加载前后各1页）
-        const pagesToLoad = [currentPage];
+        var pagesToLoad = [currentPage];
         if(currentPage > 1) pagesToLoad.unshift(currentPage-1);
         if(currentPage < total) pagesToLoad.push(currentPage+1);
 
         body.innerHTML = '';
-        pagesToLoad.forEach(pn=>{
-            const img = document.createElement('img');
+        pagesToLoad.forEach(function(pn){
+            var img = document.createElement('img');
             img.src = readerBook.b + pn + '.jpg';
             img.alt = '第' + pn + '页';
             img.referrerPolicy = 'no-referrer';
@@ -307,68 +427,67 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:linear-gradi
             body.appendChild(img);
         });
 
-        // 滚动到当前页
-        setTimeout(()=>{
-            const imgs = body.querySelectorAll('img');
-            const targetIdx = pagesToLoad.indexOf(currentPage);
+        setTimeout(function(){
+            var imgs = body.querySelectorAll('img');
+            var targetIdx = pagesToLoad.indexOf(currentPage);
             if(imgs[targetIdx]){
                 imgs[targetIdx].scrollIntoView({behavior:'smooth', block:'start'});
             }
         }, 100);
     }
 
-    $('prevPage').addEventListener('click', ()=>{
+    $('prevPage').addEventListener('click', function(){
         if(currentPage > 1){ currentPage--; renderPage(); }
     });
-    $('nextPage').addEventListener('click', ()=>{
+    $('nextPage').addEventListener('click', function(){
         if(currentPage < readerBook.p){ currentPage++; renderPage(); }
     });
-    $('jumpBtn').addEventListener('click', ()=>{
+    $('jumpBtn').addEventListener('click', function(){
         var n = parseInt($('jumpInput').value);
         if(n >= 1 && n <= readerBook.p){ currentPage = n; renderPage(); }
     });
-    $('jumpInput').addEventListener('keydown', e=>{
+    $('jumpInput').addEventListener('keydown', function(e){
         if(e.key === 'Enter') $('jumpBtn').click();
     });
-    $('readerClose').addEventListener('click', ()=>{
+    $('readerClose').addEventListener('click', function(){
         $('reader').classList.remove('active');
         readerBook = null;
     });
 
-    // 键盘翻页
-    document.addEventListener('keydown', e=>{
+    document.addEventListener('keydown', function(e){
         if(!$('reader').classList.contains('active')) return;
         if(e.key === 'ArrowLeft') $('prevPage').click();
         if(e.key === 'ArrowRight') $('nextPage').click();
         if(e.key === 'Escape') $('readerClose').click();
     });
 
-    // 按钮事件
+    // ============ 按钮事件 ============
     $('searchBtn').addEventListener('click', doSearch);
-    $('resetBtn').addEventListener('click', ()=>{
-        ['fStage','fGrade','fVolume','fSubject','fVersion'].forEach(id=>$(id).value='');
-        $('results').innerHTML = '<div class="empty">请选择筛选条件后点击「搜索课本」</div>';
+    $('resetBtn').addEventListener('click', function(){
+        comboStage.reset();
+        comboGrade.reset();
+        comboVolume.reset();
+        comboSubject.reset();
+        comboVersion.reset();
+        $('fKeyword').value = '';
+        filters.keyword = '';
+        $('results').innerHTML = '<div class="empty">请选择筛选条件或输入关键词后点击「搜索课本」</div>';
         $('resultInfo').innerHTML = '';
-        currentResults = [];
     });
 
-    // 回车搜索
-    document.querySelectorAll('.filter-item select').forEach(sel=>{
-        sel.addEventListener('change', ()=>{
-            // 选择后自动搜索
-            doSearch();
-        });
+    // 关键词回车搜索
+    $('fKeyword').addEventListener('keydown', function(e){
+        if(e.key === 'Enter') doSearch();
     });
 
     function showToast(msg){
         var t = $('toast');
         t.textContent = msg;
         t.className = 'toast show';
-        setTimeout(()=> t.className = 'toast', 2000);
+        setTimeout(function(){ t.className = 'toast'; }, 2000);
     }
 
-    // 初始显示全部课本数量
-    $('resultInfo').innerHTML = '共收录 <span>' + data.length + '</span> 本课本，选择条件后自动搜索';
+    $('resultInfo').innerHTML = '共收录 <span>' + data.length + '</span> 本课本，选择条件或输入关键词后自动搜索';
 })();
 </script>
 </body>
