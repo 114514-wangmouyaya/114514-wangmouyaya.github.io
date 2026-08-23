@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
 <title>电子课本</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -236,7 +237,7 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:linear-gradi
             const card = document.createElement('div');
             card.className = 'book-card';
             const coverHtml = b.th
-                ? '<img src="' + b.th + '" alt="' + esc(b.t) + '" loading="lazy" onerror="this.style.display=\'none\';this.parentElement.innerHTML=\'<div class=no-cover>📕</div>\'">'
+                ? '<img src="' + b.th + '" alt="' + esc(b.t) + '" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display=\'none\';this.parentElement.innerHTML=\'<div class=no-cover>📕</div>\'">'
                 : '<div class="no-cover">📕</div>';
             card.innerHTML =
                 '<div class="book-cover">' + coverHtml + '</div>' +
@@ -292,6 +293,7 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:linear-gradi
             const img = document.createElement('img');
             img.src = readerBook.b + pn + '.jpg';
             img.alt = '第' + pn + '页';
+            img.referrerPolicy = 'no-referrer';
             if(pn === currentPage){
                 img.style.border = '2px solid rgba(167,139,250,0.5)';
             }
