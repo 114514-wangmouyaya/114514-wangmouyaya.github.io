@@ -4265,6 +4265,7 @@ main { padding-top: 26px; }
       "</div>" +
       '<div id="aiResult" class="ai-result loading">填好范围后点「生成练习」，AI 会按今天学的单元出题。' +
       "题目会显示在这里，让孩子抄到纸上做。</div>" +
+      '<div id="aiSpeakWrap" class="form-actions" hidden></div>' +
       '<div id="aiPhotoStep" class="form-actions" hidden>' +
         '<button id="aiPhotoBtn" class="btn">我已做完，拍照让 AI 批阅</button>' +
       "</div>";
@@ -4376,6 +4377,14 @@ main { padding-top: 26px; }
       state.lastAiSession = { subject: subject, topic: topic,
                               questionText: text, createdAt: new Date().toISOString() };
       save();
+      var wrap = $("#aiSpeakWrap");
+      wrap.innerHTML = "";
+      var sb = document.createElement("button");
+      sb.className = "btn";
+      sb.textContent = "🔊 朗读这组题";
+      sb.addEventListener("click", function () { speakText(text); });
+      wrap.appendChild(sb);
+      wrap.hidden = false;
       $("#aiPhotoStep").hidden = false;
       toast("出题完成，让孩子抄题做吧", true);
     }).catch(function (err) { toast("AI 出题失败：" + err.message); });
@@ -6807,6 +6816,7 @@ main { padding-top: 26px; }
       $("#pMode").value = "ai";
       renderPracticeMode();
       check("ai-area-rendered", !!document.getElementById("aiGen"));
+      check("ai-speak-wrap", !!document.getElementById("aiSpeakWrap"));
       $("#pMode").value = "photo";
       renderPracticeMode();
       check("photo-area-rendered", !!document.getElementById("photoGrade"));
