@@ -689,11 +689,13 @@ testBtn.addEventListener('click', async ()=>{
     const key = cfgApiKey.value.trim();
     const model = cfgModel.value.trim();
     if(!ep || !key){
+        testResult.style.display = 'block';
         testResult.className = 'test-result err';
         testResult.textContent = '请先填写 API 地址和 Key';
         return;
     }
     testBtn.disabled = true;
+    testResult.style.display = 'block';
     testResult.className = 'test-result';
     testResult.textContent = '测试中...';
     try {
