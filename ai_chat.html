@@ -698,6 +698,24 @@ testBtn.addEventListener('click', async ()=>{
     testResult.style.display = 'block';
     testResult.className = 'test-result';
     testResult.textContent = '测试中...';
+    // 先校验地址格式
+    var urlErr = null;
+    try {
+        var u = new URL(ep);
+        if(u.protocol !== 'https:' && u.protocol !== 'http:') urlErr = 'API 地址必须以 http:// 或 https:// 开头';
+    } catch(_) {
+        urlErr = 'API 地址格式不正确，请检查是否填写了完整网址（如 https://api.deepseek.com/v1/chat/completions）';
+    }
+    if(urlErr){
+        testResult.className = 'test-result err';
+        testResult.innerHTML = '✗ <b>本地配置错误</b>：' + urlErr;
+        testBtn.disabled = false;
+        return;
+    }
+
+    // 15秒超时控制
+    var ctrl = new AbortController();
+    var timer = setTimeout(function(){ ctrl.abort(); }, 15000);
     try {
         const resp = await fetch(ep, {
             method:'POST',
@@ -709,19 +727,89 @@ testBtn.addEventListener('click', async ()=>{
                 model: model || 'deepseek-chat',
                 messages: [{role:'user', content:'hi'}],
                 max_tokens: 5
-            })
+            }),
+            signal: ctrl.signal
         });
+        clearTimeout(timer);
         if(resp.ok){
             testResult.className = 'test-result ok';
-            testResult.textContent = '✓ 连接成功！API 配置正常';
+            testResult.innerHTML = '✓ 连接成功！API 地址、Key、模型均正常';
         } else {
+            // 提取服务商返回的具体错误信息
             const t = await resp.text();
+            var detail = '';
+            try {
+                var j = JSON.parse(t);
+                detail = (j.error && (j.error.message || j.message)) || j.message || '';
+            } catch(_) { detail = t; }
+            detail = (detail || '').substring(0, 200);
+
+            // 根据状态码判断是哪一边的错误
+            var side = '', reason = '', fix = '';
+            switch(resp.status){
+                case 400:
+                    side = '服务商拒绝请求'; reason = '请求参数格式有误';
+                    fix = '请检查模型名称和请求设置';
+                    break;
+                case 401:
+                    side = '本地配置错误（Key 问题）'; reason = 'API Key 错误、已失效或未填写正确';
+                    fix = '请重新复制正确的 API Key，注意不要有多余空格';
+                    break;
+                case 402:
+                    side = '账户问题'; reason = '账户余额不足，需要充值';
+                    fix = '请登录服务商平台充值后再试';
+                    break;
+                case 403:
+                    side = '账户权限问题'; reason = '该 Key 无访问权限，或账户被禁用/欠费';
+                    fix = '请检查账户状态、余额及 Key 权限';
+                    break;
+                case 404:
+                    side = '本地配置错误（地址问题）'; reason = 'API 地址不存在，端点路径填错';
+                    fix = '请检查地址结尾是否为 /chat/completions，域名是否正确';
+                    break;
+                case 422:
+                    side = '本地配置错误（模型问题）'; reason = '模型名称错误或该模型不可用';
+                    fix = '请检查模型名（如 deepseek-chat），或确认账户是否有权使用该模型';
+                    break;
+                case 429:
+                    side = '触发限流'; reason = '请求过于频繁，或超出速率/额度限制';
+                    fix = '请稍等片刻再试，或检查账户额度';
+                    break;
+                case 500: case 502: case 503: case 504:
+                    side = 'AI 服务商服务器错误'; reason = '对方服务器暂时故障或维护中';
+                    fix = '这不是你的配置问题，请稍后再试';
+                    break;
+                default:
+                    side = '未知错误'; reason = 'HTTP ' + resp.status;
+                    fix = '请根据下方服务商返回信息排查';
+            }
             testResult.className = 'test-result err';
-            testResult.textContent = '✗ 连接失败: ' + resp.status + ' ' + t.substring(0,150);
+            testResult.innerHTML = '✗ <b>连接失败</b>（错误来源：' + side + '）<br>'
+                + '原因：' + reason + '<br>'
+                + '建议：' + fix
+                + (detail ? '<br>服务商返回：' + detail : '');
         }
     } catch(e){
+        clearTimeout(timer);
         testResult.className = 'test-result err';
-        testResult.textContent = '✗ 网络错误: ' + e.message;
+        var msg;
+        if(e.name === 'AbortError'){
+            msg = '✗ <b>请求超时（超过15秒无响应）</b><br>错误来源：网络或服务商<br>'
+                + '原因：网络连接太慢，或服务商无响应<br>建议：检查网络后重试，或稍后再试';
+        } else {
+            // Failed to fetch：可能是断网、地址错误、CORS拦截、混合内容
+            var hints = [];
+            if(location.protocol === 'file:' && /^http:\/\//.test(ep)){
+                hints.push('本地页面调用 http 接口可能被浏览器拦截');
+            }
+            if(!/^https?:\/\//.test(ep)){
+                hints.push('地址缺少 http:// 或 https:// 开头');
+            }
+            hints.push('请确认：①电脑能正常上网 ②API 域名拼写正确 ③该服务商允许浏览器直接调用（无跨域CORS限制）');
+            msg = '✗ <b>网络请求未能发出</b>（错误来源：本地网络 / 浏览器 / 地址）<br>'
+                + '原因：' + e.message + '<br>建议：' + hints.join('；');
+        }
+        testResult.innerHTML = msg;
     }
     testBtn.disabled = false;
 });
