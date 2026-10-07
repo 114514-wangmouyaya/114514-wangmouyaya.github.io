@@ -241,6 +241,52 @@
         .send-btn:hover:not(:disabled) { opacity: 0.9; }
         .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .send-btn.stop { background: #dc2626; }
+                .mic-btn {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            border: 2px solid #d1d5db;
+            background: #fff;
+            color: #667eea;
+            cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: all 0.2s;
+            padding: 0;
+        }
+        .mic-btn:hover { border-color: #667eea; background: #f5f3ff; }
+        .mic-btn.recording {
+            background: #ef4444;
+            border-color: #ef4444;
+            color: #fff;
+            animation: micPulse 1.2s ease-in-out infinite;
+        }
+        @keyframes micPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); }
+            50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
+        }
+        .mic-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .voice-status {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1f2937;
+            color: #fff;
+            font-size: 12px;
+            padding: 6px 12px;
+            border-radius: 8px;
+            white-space: nowrap;
+            margin-bottom: 8px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .voice-status.show { opacity: 1; }
+        .input-inner { position: relative; }
         .input-hint { text-align: center; font-size: 12px; color: #9ca3af; margin-top: 8px; }
 
         /* ===== 设置弹窗 ===== */
@@ -326,7 +372,9 @@
 
 <div class="input-area">
     <div class="input-inner">
+        <div class="voice-status" id="voiceStatus">正在聆听，请说话...</div>
         <textarea id="userInput" rows="1" placeholder="输入你的问题... (Enter发送，Shift+Enter换行)"></textarea>
+        <button class="mic-btn" id="micBtn" title="语音输入">🎤</button>
         <button class="send-btn" id="sendBtn">发送</button>
     </div>
     <div class="input-hint">AI 生成的内容仅供参考，请核实重要信息</div>
@@ -631,6 +679,107 @@ function autoResize(){
     userInput.style.height = Math.min(userInput.scrollHeight, 160) + 'px';
 }
 userInput.addEventListener('input', autoResize);
+// ============ 语音输入 ============
+const micBtn = document.getElementById('micBtn');
+const voiceStatus = document.getElementById('voiceStatus');
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+let isRecording = false;
+let baseText = ''; // 录音开始时输入框已有的内容
+
+if(!SR){
+    micBtn.disabled = true;
+    micBtn.title = '当前浏览器不支持语音识别，请使用 Chrome/Edge 浏览器';
+} else {
+    recognition = new SR();
+    recognition.lang = 'zh-CN';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    function showVoiceTip(txt, ms){
+        voiceStatus.textContent = txt;
+        voiceStatus.classList.add('show');
+        if(ms){
+            setTimeout(function(){
+                if(isRecording) voiceStatus.textContent = '正在聆听，请说话...';
+                else voiceStatus.classList.remove('show');
+            }, ms);
+        }
+    }
+    function hideVoiceTip(){
+        voiceStatus.classList.remove('show');
+    }
+
+    recognition.onstart = function(){
+        isRecording = true;
+        micBtn.classList.add('recording');
+        micBtn.textContent = '■';
+        baseText = userInput.value;
+        if(baseText && !/\s$/.test(baseText)) baseText += ' ';
+        showVoiceTip('正在聆听，请说话...');
+    };
+
+    recognition.onresult = function(event){
+        let finalText = '';
+        let interimText = '';
+        for(let i = 0; i < event.results.length; i++){
+            const tr = event.results[i];
+            if(tr.isFinal) finalText += tr[0].transcript;
+            else interimText += tr[0].transcript;
+        }
+        userInput.value = baseText + finalText + interimText;
+        userInput.style.height = 'auto';
+        userInput.style.height = Math.min(userInput.scrollHeight, 160) + 'px';
+        if(interimText) showVoiceTip('识别中：' + interimText);
+    };
+
+    recognition.onerror = function(event){
+        let tip = '';
+        switch(event.error){
+            case 'not-allowed':
+            case 'service-not-allowed':
+                tip = '麦克风权限被拒绝，请在浏览器设置中允许使用麦克风';
+                break;
+            case 'no-speech':
+                tip = '没有检测到语音，请靠近麦克风再试';
+                break;
+            case 'audio-capture':
+                tip = '找不到麦克风设备，请检查麦克风是否连接';
+                break;
+            case 'network':
+                tip = '语音识别需要联网，请检查网络连接';
+                break;
+            case 'aborted':
+                return;
+            default:
+                tip = '语音识别出错：' + event.error;
+        }
+        showVoiceTip(tip, 3000);
+        stopRecording();
+    };
+
+    recognition.onend = function(){
+        stopRecording();
+    };
+
+    function stopRecording(){
+        isRecording = false;
+        micBtn.classList.remove('recording');
+        micBtn.textContent = '🎤';
+        hideVoiceTip();
+        userInput.focus();
+    }
+
+    micBtn.addEventListener('click', function(){
+        if(isRecording){
+            recognition.stop();
+        } else {
+            try {
+                recognition.start();
+            } catch(e){ /* 重复start忽略 */ }
+        }
+    });
+}
 
 newChatBtn.addEventListener('click', ()=>{
     if(isGenerating) stopGenerating();
