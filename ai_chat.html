@@ -86,7 +86,7 @@
         .msg.user .avatar { background: #0066cc; }
         .bubble {
             max-width: 75%;
-            padding: 12px 16px;
+            padding: 12px 52px 12px 16px;
             border-radius: 12px;
             font-size: 15px;
             line-height: 1.7;
@@ -210,9 +210,14 @@
             gap: 10px;
             align-items: flex-end;
         }
-        #userInput {
+        .textarea-wrap {
             flex: 1;
-            padding: 12px 16px;
+            position: relative;
+        }
+        #userInput {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 12px 52px 12px 16px;
             border: 2px solid #d1d5db;
             border-radius: 12px;
             font-size: 15px;
@@ -242,22 +247,25 @@
         .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .send-btn.stop { background: #dc2626; }
                 .mic-btn {
-            width: 48px;
-            height: 48px;
-            border-radius: 12px;
-            border: 2px solid #d1d5db;
-            background: #fff;
+            position: absolute;
+            right: 6px;
+            bottom: 6px;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            border: none;
+            background: transparent;
             color: #667eea;
             cursor: pointer;
-            font-size: 20px;
+            font-size: 18px;
             display: flex;
             align-items: center;
             justify-content: center;
-            flex-shrink: 0;
             transition: all 0.2s;
             padding: 0;
+            z-index: 2;
         }
-        .mic-btn:hover { border-color: #667eea; background: #f5f3ff; }
+        .mic-btn:hover { background: #ede9fe; }
         .mic-btn.recording {
             background: #ef4444;
             border-color: #ef4444;
@@ -372,9 +380,11 @@
 
 <div class="input-area">
     <div class="input-inner">
-        <div class="voice-status" id="voiceStatus">正在聆听，请说话...</div>
-        <textarea id="userInput" rows="1" placeholder="输入你的问题... (Enter发送，Shift+Enter换行)"></textarea>
+        <div class="textarea-wrap">
+            <div class="voice-status" id="voiceStatus">正在聆听，请说话...</div>
+            <textarea id="userInput" rows="1" placeholder="输入你的问题... (Enter发送，Shift+Enter换行)"></textarea>
         <button class="mic-btn" id="micBtn" title="语音输入">🎤</button>
+        </div>
         <button class="send-btn" id="sendBtn">发送</button>
     </div>
     <div class="input-hint">AI 生成的内容仅供参考，请核实重要信息</div>
